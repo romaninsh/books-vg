@@ -1,7 +1,9 @@
 # yaml-language-server: $schema=./api-schema-1.json
 # The web frontend's API (web/books/). Reads are live entities; every write will be an
-# atomic action (docs/frontend-plan.md). `refresh:` re-reads what other writers change (the
-# desktop, MCP, totals computed over lines and allocations): SurrealDB tables have no live feed.
+# atomic action. Tables are live (LIVE SELECT): a write from anyone reaches every client, and
+# events in tests/schema.surql touch the rows whose totals are worked out from other tables
+# (invoices, payments, contacts, bank accounts). So nothing polls except the report query
+# tables, which can't be live (`refresh: 60`).
 title: Books
 description: Books. Sorted. — invoices, contacts and the ledger for the web app.
 
@@ -14,7 +16,7 @@ entities:
                 net, vat, gross, paid, amount_due, status]
       filter: [doc, contact, contact.name, number, doc.reference, doc.date, due_date, status, amount_due, gross]
       default_sort: { column: doc.date, direction: desc }
-    api: { collection_limit: 200, refresh: 5 }
+    api: { collection_limit: 200 }
 
   - name: purchase_invoices
     observe: purchase_invoice
@@ -24,7 +26,7 @@ entities:
                 net, vat, gross, paid, amount_due, status]
       filter: [doc, contact, contact.name, number, doc.reference, doc.date, due_date, status, amount_due, gross]
       default_sort: { column: doc.date, direction: desc }
-    api: { collection_limit: 200, refresh: 5 }
+    api: { collection_limit: 200 }
 
   - name: invoice_lines
     observe: invoice_line
@@ -43,7 +45,6 @@ entities:
       columns: [doc, name, mime, size, data, added_at]
       filter: [doc]
       default_sort: name
-    api: { refresh: 5 }
 
   - name: allocations
     observe: allocation
@@ -52,7 +53,6 @@ entities:
       columns: [payment, payment.date, payment.type, payment.reference, invoice, invoice.date, invoice_number, amount]
       filter: [payment, invoice]
       default_sort: { column: payment.date, direction: asc }
-    api: { refresh: 5 }
 
   # Money received from customers (lodgements) and paid to suppliers; written by save-payment.
   - name: lodgements
@@ -63,7 +63,7 @@ entities:
                 bank_account.name, allocated, unallocated]
       filter: [doc, contact, contact.name, doc.reference, doc.date, bank_account, unallocated]
       default_sort: { column: doc.date, direction: desc }
-    api: { collection_limit: 200, refresh: 5 }
+    api: { collection_limit: 200 }
 
   - name: supplier_payments
     observe: supplier_payment
@@ -73,7 +73,7 @@ entities:
                 bank_account.name, allocated, unallocated]
       filter: [doc, contact, contact.name, doc.reference, doc.date, bank_account, unallocated]
       default_sort: { column: doc.date, direction: desc }
-    api: { collection_limit: 200, refresh: 5 }
+    api: { collection_limit: 200 }
 
   - name: bank_accounts
     observe: bank_account
@@ -82,7 +82,7 @@ entities:
       columns: [name, code, nominal_path, balance, transactions]
       filter: [name, code]
       default_sort: name
-    api: { load: instant, refresh: 10 }
+    api: { load: instant }
 
   - name: customers
     observe: customer
@@ -111,7 +111,7 @@ entities:
       columns: [code, name, path, parent, type, bp, rank, transactions]
       filter: [code, path, type, bp, parent]
       default_sort: code
-    api: { load: instant, refresh: 10 }
+    api: { load: instant }
 
   # The audit log (application.yaml log_changes/log_events): read-only by nature. Run
   # arguments (`args`) stay out: they repeat the whole saved form.
@@ -122,9 +122,10 @@ entities:
       columns: [logged_at, who, action, table, record, event, group, before, after, doc, contact]
       filter: [doc, contact, table, group, logged_at, who]
       default_sort: { column: logged_at, direction: desc }
-    api: { collection_limit: 200, refresh: 5 }
+    api: { collection_limit: 200 }
 
-  # Reports: query tables derived from the documents on every read (never stored).
+  # Reports: query tables derived from the documents on every read (never stored). Query tables
+  # have no live feed, so they re-read on a timer: every 60 s rather than Vantage's default 10.
   - name: trial_balance
     observe: trial_balance
     read_only: true
@@ -132,7 +133,7 @@ entities:
       columns: [nominal, code, nominal_path, nominal_type, bp, postings, balance]
       filter: [bp, nominal_type, code]
       default_sort: code
-    api: { load: instant }
+    api: { load: instant, refresh: 60 }
 
   - name: ledger
     observe: nominal_sheet
@@ -141,7 +142,7 @@ entities:
       columns: [doc, date, doc_type, reference, nominal_code, nominal_path, bank, amount]
       filter: [nominal_code, doc_type, date, doc, reference, bank]
       default_sort: { column: date, direction: desc }
-    api: { collection_limit: 500 }
+    api: { collection_limit: 500, refresh: 60 }
 
   - name: nominal_months
     observe: nominal_month
@@ -150,7 +151,7 @@ entities:
       columns: [nominal, code, nominal_path, nominal_type, bp, year, month, total]
       filter: [bp, year, code]
       default_sort: code
-    api: { load: instant }
+    api: { load: instant, refresh: 60 }
 
   # Misc payments and lodgements (bank ↔ a nominal), written by save-misc.
   - name: misc
@@ -161,14 +162,14 @@ entities:
                 bank_account, bank_account.name, nominal, nominal.code, nominal.path]
       filter: [doc, doc.type, doc.date, doc.reference, doc.contact_name, bank_account, nominal]
       default_sort: { column: doc.date, direction: desc }
-    api: { collection_limit: 200, refresh: 5 }
+    api: { collection_limit: 200 }
 
   - name: company
     observe: company
     read_only: true
     params:
       columns: [name, fy_start_month, vat_no, address, email]
-    api: { load: instant, refresh: 10 }
+    api: { load: instant }
 
   - name: aged_debt
     observe: aged_debt
@@ -177,6 +178,7 @@ entities:
       columns: [contact, name, ctype, current, d30, d60, d90, older, total]
       filter: [ctype]
       default_sort: name
+    api: { refresh: 60 }
 
 actions: [save-invoice, save-payment, save-contact, save-misc, save-nominal, save-bank-account, save-company,
           delete-doc, delete-contact, delete-nominal, stage-file]

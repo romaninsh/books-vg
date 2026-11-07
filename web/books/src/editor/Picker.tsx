@@ -28,7 +28,14 @@ export const Picker = observer((p: PickerProps) => {
   const exact = rows.some((r) => String(r.name ?? r.path ?? "").toLowerCase() === typed.trim().toLowerCase());
   // "Create …" only once the server has answered for what was typed: a fast Enter must not
   // create "Cambridge" when "Cambridge Genomix" was about to be offered
-  const canCreate = !!p.create && typed.trim().length > 1 && !exact && page.settled;
+  // Are the rows the answer to what was typed? `settled` alone isn't enough: while the new query
+  // loads, the window can still show the previous one's rows, settled (a fast "Cambridge" + Enter
+  // picked "Bank Interest", the first of the unfiltered list). Every picker filters on name or
+  // path containing the text, so a row without it is stale.
+  const needle = typed.trim().toLowerCase();
+  // (name or path: a nominal's name is "Internet", its path "Other Direct Costs:Internet")
+  const fresh = page.settled && rows.every((r) => `${r.name ?? ""} ${r.path ?? ""}`.toLowerCase().includes(needle));
+  const canCreate = !!p.create && typed.trim().length > 1 && !exact && fresh;
   const options = rows.length + (canCreate ? 1 : 0);
   useEffect(() => setActive(0), [typed]);
 
@@ -41,8 +48,8 @@ export const Picker = observer((p: PickerProps) => {
   // Enter before the matches arrived: pick when they do
   const [pending, setPending] = useState(false);
   useEffect(() => {
-    if (pending && page.settled) { setPending(false); if (options > 0) choose(active); }
-  }, [pending, page.settled, options]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (pending && fresh) { setPending(false); if (options > 0) choose(active); }
+  }, [pending, fresh, options]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const listRef = useRef<HTMLUListElement>(null);
   return (
@@ -62,7 +69,7 @@ export const Picker = observer((p: PickerProps) => {
         onKeyDown={(e) => {
           if (e.key === "ArrowDown") { e.preventDefault(); setOpen(true); setActive((a) => Math.min(options - 1, a + 1)); }
           else if (e.key === "ArrowUp") { e.preventDefault(); setActive((a) => Math.max(0, a - 1)); }
-          else if (e.key === "Enter" && text !== null && !page.settled) { e.preventDefault(); setPending(true); }
+          else if (e.key === "Enter" && text !== null && !fresh) { e.preventDefault(); setPending(true); }
           else if ((e.key === "Enter" || e.key === "Tab") && open && text !== null && options > 0) {
             if (e.key === "Enter") e.preventDefault();
             choose(active);

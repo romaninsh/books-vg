@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowRight, ArrowUpRight } from "lucide-react";
+import { ArrowDown, ArrowRight, ArrowUpRight, Check, X } from "lucide-react";
 import { ABOUT } from "@/about";
+import { COMPARISON } from "./comparison";
+
+// `code` in a comparison line renders as code
+const withCode = (text: string) =>
+  text.split("`").map((part, i) => (i % 2
+    ? <code key={i} className="rounded px-1 py-px font-mono text-[0.85em]" style={{ background: "rgba(255,255,255,0.06)" }}>{part}</code>
+    : part));
 
 // The first thing a browser session sees: what this app is, that it was built as a demo for
 // Vantage UI, and how it was made, in measured numbers (src/about.ts). Once per session
@@ -18,7 +25,23 @@ const V = {
 };
 
 const SEEN = "books.splash.seen";
-export const openAbout = () => window.dispatchEvent(new Event("books:about"));
+
+// About has its own address, /about, so a refresh reopens it. Opening it from the app pushes
+// /about onto the history without telling the router, so the page underneath stays as it was;
+// closing goes back to it. Landing on /about directly (a refresh, a link) shows it over the
+// default page (main.tsx routes /about there); closing then goes to the sales invoices.
+const ABOUT_PATH = "/about";
+const atAbout = () => window.location.pathname === ABOUT_PATH;
+export const openAbout = () => {
+  if (!atAbout()) window.history.pushState({ books_about: true }, "", ABOUT_PATH);
+  window.dispatchEvent(new Event("books:about"));
+};
+function leaveAbout() {
+  if (!atAbout()) return;
+  if (window.history.state?.books_about) { window.history.back(); return; }
+  window.history.replaceState(null, "", "/");
+  window.dispatchEvent(new PopStateEvent("popstate")); // the router follows to its home page
+}
 
 const fmt = (n: number) => n.toLocaleString("en-GB");
 const s = ABOUT.session, b = ABOUT.build;
@@ -36,21 +59,27 @@ const STATS: [string, string, string][] = [
 ];
 
 export function Splash() {
-  const [open, setOpen] = useState(() => sessionStorage.getItem(SEEN) !== "1");
+  const [open, setOpen] = useState(() => atAbout() || sessionStorage.getItem(SEEN) !== "1");
   const button = useRef<HTMLButtonElement>(null);
-  const close = () => { sessionStorage.setItem(SEEN, "1"); setOpen(false); };
+  const close = () => { sessionStorage.setItem(SEEN, "1"); setOpen(false); leaveAbout(); };
 
   useEffect(() => {
     const again = () => setOpen(true);
+    // Back and Forward: arriving at /about opens it, leaving closes it
+    const moved = () => setOpen(atAbout());
     window.addEventListener("books:about", again);
-    return () => window.removeEventListener("books:about", again);
+    window.addEventListener("popstate", moved);
+    return () => { window.removeEventListener("books:about", again); window.removeEventListener("popstate", moved); };
   }, []);
   useEffect(() => {
     if (!open) return;
     const t = setTimeout(() => button.current?.focus(), 50);
-    // the splash has the keyboard while it shows: Enter or Esc opens the books
+    // the splash has the keyboard while it shows: Enter or Esc opens the books (Enter on another
+    // button or link does that one's job instead)
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" || e.key === "Enter") { e.preventDefault(); e.stopImmediatePropagation(); close(); }
+      const other = e.key === "Enter" && document.activeElement !== button.current
+        && document.activeElement?.matches("button, a");
+      if ((e.key === "Escape" || e.key === "Enter") && !other) { e.preventDefault(); e.stopImmediatePropagation(); close(); }
     };
     window.addEventListener("keydown", onKey, true);
     return () => { clearTimeout(t); window.removeEventListener("keydown", onKey, true); };
@@ -73,11 +102,12 @@ export function Splash() {
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.3 } }}
         >
           <div className="flex min-h-full items-center justify-center p-4 sm:p-8">
-            <motion.div
+            {/* No transform animation on the card: it is several screens tall with the
+                comparison, and scaling it paints the whole card into one layer, which crashed
+                a GPU-less Chromium. The overlay's fade is enough. */}
+            <div
               className="w-full max-w-5xl rounded-2xl border p-6 shadow-2xl sm:p-9"
               style={{ background: V.surface1, borderColor: "rgba(255,255,255,0.08)" }}
-              initial={{ y: 20, scale: 0.98 }} animate={{ y: 0, scale: 1 }} exit={{ y: -10, scale: 0.98 }}
-              transition={{ duration: 0.4, ease: "easeOut" }}
             >
               {/* one row: the logo, and across from it what this is built with */}
               <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
@@ -122,6 +152,12 @@ export function Splash() {
                     Build your own <ArrowUpRight size={16} />
                   </a>
                 </div>
+                <button type="button"
+                  onClick={() => document.getElementById("splash-compare")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                  className="inline-flex items-center gap-1.5 self-start text-[0.85rem] font-medium hover:underline"
+                  style={{ color: V.accent300 }}>
+                  How Vantage shortened this build <ArrowDown size={14} />
+                </button>
               </div>
 
               <dl className="grid min-w-0 grid-cols-1 content-center gap-3 min-[420px]:grid-cols-2">
@@ -136,7 +172,37 @@ export function Splash() {
                 ))}
               </dl>
               </div>
-            </motion.div>
+
+              {/* below the fold: the dialog scrolls to it */}
+              <section id="splash-compare" aria-labelledby="splash-compare-title" className="mt-12 scroll-mt-6 border-t pt-8"
+                style={{ borderColor: "rgba(255,255,255,0.08)" }}>
+                <p className="font-mono text-[0.72rem] font-medium uppercase tracking-[0.18em]" style={{ color: V.accent400 }}>
+                  Vantage vs. building it by hand
+                </p>
+                <h2 id="splash-compare-title" className="mt-2 text-2xl font-semibold tracking-[-0.02em]" style={{ color: V.text1 }}>
+                  LLM with Vantage builds 10-times faster
+                </h2>
+                <ol className="mt-6 grid gap-3 md:grid-cols-2">
+                  {COMPARISON.map((c, i) => (
+                    <li key={c.title} className="rounded-xl border px-4 py-3.5"
+                      style={{ background: V.surface2, borderColor: "rgba(255,255,255,0.08)" }}>
+                      <h3 className="text-[0.95rem] font-semibold" style={{ color: V.text1 }}>
+                        <span className="mr-2 font-mono text-xs tabular-nums" style={{ color: V.text3 }}>{String(i + 1).padStart(2, "0")}</span>
+                        {c.title}
+                      </h3>
+                      <p className="mt-2 flex gap-2 text-[0.84rem] leading-snug" style={{ color: V.text3 }}>
+                        <X size={15} className="mt-0.5 shrink-0" style={{ color: "#f87171" }} aria-label="By hand" />
+                        <span><span className="font-medium" style={{ color: V.text2 }}>By hand: </span>{withCode(c.byHand)}</span>
+                      </p>
+                      <p className="mt-1.5 flex gap-2 text-[0.84rem] leading-snug" style={{ color: V.text1 }}>
+                        <Check size={15} className="mt-0.5 shrink-0" style={{ color: "#4ade80" }} aria-label="Vantage" />
+                        <span><span className="font-medium" style={{ color: V.accent300 }}>Vantage: </span>{withCode(c.vantage)}</span>
+                      </p>
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            </div>
           </div>
         </motion.div>
       )}

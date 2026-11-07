@@ -282,19 +282,43 @@ DEFINE EVENT OVERWRITE doc_delete ON TABLE doc WHEN $event = "DELETE" THEN {
   DELETE allocation WHERE payment = $before.id OR invoice = $before.id;
   DELETE attachment WHERE doc = $before.id;
 };
--- Touch the extension row when its document changes so live pages refresh.
+-- Touches. Lists show totals worked out from other tables (an invoice's from its lines and
+-- allocations, a contact's outstanding balance, a bank account's balance), but a live update
+-- fires only for a row's own write. So a change to the rows a total is made of touches the row
+-- that shows it. A touch must change a value: `SET doc = doc` changes nothing, and no live
+-- update goes out (measured 2026-11-07), so it stamps `touched_at`. The web app's API doesn't
+-- poll these tables; these touches are what keep them current.
+DEFINE FIELD IF NOT EXISTS touched_at ON invoice TYPE option<datetime>;
+DEFINE FIELD IF NOT EXISTS touched_at ON payment TYPE option<datetime>;
+DEFINE FIELD IF NOT EXISTS touched_at ON misc TYPE option<datetime>;
+DEFINE FIELD IF NOT EXISTS touched_at ON contact TYPE option<datetime>;
+DEFINE FIELD IF NOT EXISTS touched_at ON bank_account TYPE option<datetime>;
+-- A document's date, reference or total shows on its extension row.
 DEFINE EVENT OVERWRITE doc_touch ON TABLE doc WHEN $event = "UPDATE" THEN {
-  UPDATE misc SET doc = doc WHERE doc = $after.id;
-  UPDATE invoice SET doc = doc WHERE doc = $after.id;
-  UPDATE payment SET doc = doc WHERE doc = $after.id;
+  UPDATE misc SET touched_at = time::now() WHERE doc = $after.id;
+  UPDATE invoice SET touched_at = time::now() WHERE doc = $after.id;
+  UPDATE payment SET touched_at = time::now() WHERE doc = $after.id;
 };
--- An allocation changes both sides' paid / due: touch them so live rows refresh.
+-- An allocation changes both sides' paid / due.
 DEFINE EVENT OVERWRITE allocation_touch ON TABLE allocation THEN {
   LET $a = IF $event = "DELETE" THEN $before ELSE $after END;
-  UPDATE invoice SET doc = doc WHERE doc = $a.invoice;
-  UPDATE payment SET doc = doc WHERE doc = $a.payment;
+  UPDATE invoice SET touched_at = time::now() WHERE doc = $a.invoice;
+  UPDATE payment SET touched_at = time::now() WHERE doc = $a.payment;
 };
--- Lines feed the invoice's totals: touch the invoice so its live row refreshes.
+-- Lines make the invoice's totals.
 DEFINE EVENT OVERWRITE invoice_line_touch ON TABLE invoice_line THEN {
-  UPDATE invoice SET doc = doc WHERE doc = (IF $event = "DELETE" THEN $before.doc ELSE $after.doc END);
+  UPDATE invoice SET touched_at = time::now() WHERE doc = (IF $event = "DELETE" THEN $before.doc ELSE $after.doc END);
+};
+-- Invoices and payments make a contact's outstanding balance; payments and misc entries a bank
+-- account's balance. Before and after: a re-assigned row changes both sides. Line and allocation
+-- writes reach these through the touches above.
+DEFINE EVENT OVERWRITE invoice_contact_touch ON TABLE invoice THEN {
+  UPDATE contact SET touched_at = time::now() WHERE id IN [$before.contact, $after.contact];
+};
+DEFINE EVENT OVERWRITE payment_touch ON TABLE payment THEN {
+  UPDATE contact SET touched_at = time::now() WHERE id IN [$before.contact, $after.contact];
+  UPDATE bank_account SET touched_at = time::now() WHERE id IN [$before.bank_account, $after.bank_account];
+};
+DEFINE EVENT OVERWRITE misc_touch ON TABLE misc THEN {
+  UPDATE bank_account SET touched_at = time::now() WHERE id IN [$before.bank_account, $after.bank_account];
 };

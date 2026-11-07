@@ -33,3 +33,26 @@ test("a new session opens on the splash, once", async ({ page }) => {
   await page.keyboard.press("Escape");
   await expect(splashOf(page)).toBeHidden();
 });
+
+test("About has its own address: /about, kept on refresh, gone on close", async ({ page }) => {
+  await open(page, "/purchases/invoices");
+  await page.keyboard.press("Enter"); // the session's first splash
+  await expect(splashOf(page)).toBeHidden();
+
+  await page.getByRole("banner").getByRole("button", { name: "About this demo" }).click();
+  await expect(page).toHaveURL(/\/about$/);
+  await page.reload();
+  await expect(splashOf(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(splashOf(page)).toBeHidden();
+  await expect(page).toHaveURL(/\/purchases\/invoices$/); // back to the page it was opened from
+  await page.goForward();
+  await expect(splashOf(page)).toBeVisible(); // Forward reopens it
+
+  // a link straight to /about (from another page: a goto to the same address keeps its state)
+  await page.goto("/reports/pnl");
+  await page.goto("/about");
+  await expect(splashOf(page)).toBeVisible();
+  await page.getByRole("button", { name: /Explore Demo/ }).click();
+  await expect(page).toHaveURL(/\/sales\/invoices$/);
+});

@@ -11,5 +11,10 @@ export default defineConfig({
   // build, whose new `dist/` reloads the page under test, in a loop.
   outputDir: "/tmp/playwright-results",
   reporter: [["list"], ["html", { outputFolder: "/tmp/playwright-report", open: "never" }]],
-  use: { baseURL: process.env.VANTAGE_URL, viewport: { width: 1600, height: 1000 } },
+  use: {
+    baseURL: process.env.VANTAGE_URL, viewport: { width: 1600, height: 1000 },
+    // The container's /dev/shm is small: Chromium crashed ("Target crashed") painting the
+    // full-screen splash. This makes it use /tmp instead.
+    launchOptions: { args: ["--disable-dev-shm-usage"] },
+  },
 });
