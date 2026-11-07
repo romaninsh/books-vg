@@ -22,8 +22,14 @@ test("a new session opens on the splash, once", async ({ page }) => {
   await expect(splashOf(page)).toBeHidden();
 
   await page.keyboard.press("?");
-  await page.getByRole("button", { name: "About this demo" }).click();
+  await page.getByRole("dialog", { name: "Keyboard shortcuts" }).getByRole("button", { name: "About this demo" }).click();
   await expect(splashOf(page)).toBeVisible();
   await page.getByRole("button", { name: /Explore Demo/ }).click();
+  await expect(splashOf(page)).toBeHidden();
+
+  // and from the About button in the header
+  await page.getByRole("banner").getByRole("button", { name: "About this demo" }).click();
+  await expect(splashOf(page)).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(splashOf(page)).toBeHidden();
 });

@@ -2,7 +2,7 @@ import { Component, useEffect, useState, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router";
 import { observer, useConnection } from "@vantage-ui/client/react";
 import { AnimatePresence, motion } from "motion/react";
-import { HelpCircle, Settings, WifiOff, X } from "lucide-react";
+import { HelpCircle, Info, Settings, WifiOff, X } from "lucide-react";
 import { SearchButton } from "./SearchPalette";
 import { DraftsButton } from "./DraftsPanel";
 import { ActivityButton } from "./ActivityPanel";
@@ -158,7 +158,8 @@ export const Shell = observer(({ children }: { children: ReactNode }) => {
       <header className="bg-brand text-white shadow-sm">
         <div className="flex h-10 items-center gap-4 px-4">
           <div className="max-w-[16rem] truncate font-semibold tracking-tight" title={company?.name}>{company?.name ?? "Books"}</div>
-          <nav className="flex h-full items-end gap-0.5" aria-label="Sections">
+          {/* centred in the space between the company name and the buttons */}
+          <nav className="flex h-full min-w-0 flex-1 items-end justify-center gap-0.5" aria-label="Sections">
             {sections.map((s) => (
               <NavLink key={s.key} to={s.items[0]!.to}
                 className={"rounded-t px-3 py-1.5 text-sm " + (s === active ? "bg-chrome-light text-ink" : "text-white/85 hover:bg-white/10 hover:text-white")}>
@@ -166,7 +167,7 @@ export const Shell = observer(({ children }: { children: ReactNode }) => {
               </NavLink>
             ))}
           </nav>
-          <div className="ml-auto flex items-center gap-1">
+          <div className="flex items-center gap-1">
             <SearchButton />
             <ActivityButton />
             <DraftsButton />
@@ -177,6 +178,10 @@ export const Shell = observer(({ children }: { children: ReactNode }) => {
             <button type="button" title="Keyboard shortcuts (?)" onClick={() => setHelp(true)}
               className="flex h-7 items-center gap-1.5 rounded px-2 text-white/85 hover:bg-white/10 hover:text-white">
               <HelpCircle size={15} /><span className="hidden text-xs xl:inline">Shortcuts</span>
+            </button>
+            <button type="button" title="About this demo" aria-label="About this demo" onClick={openAbout}
+              className="flex h-7 items-center gap-1.5 rounded px-2 text-white/85 hover:bg-white/10 hover:text-white">
+              <Info size={15} /><span className="hidden text-xs xl:inline">About</span>
             </button>
           </div>
         </div>

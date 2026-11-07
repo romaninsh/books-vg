@@ -36,11 +36,18 @@ function EdgeTab({ side, edge, onClick }: { side: Side; edge: "left" | "right"; 
       onClick={onClick}
       title={`Turn to the ${LABEL[side].toLowerCase()} (Alt+${LABEL[side][0]})`}
       className={
-        "absolute top-3 z-10 flex w-7 items-center justify-center rounded-md border border-[#9fb3b0] bg-[#f4fffe] py-3 " +
-        "text-[11px] font-bold uppercase tracking-[0.18em] text-accent shadow-sm hover:bg-highlight " +
-        (edge === "right" ? "right-1" : "left-1")
+        // a strip down the card's whole edge, in the Save button's teal; the label reads from the
+        // top (the left tab is turned 180°, so its label starts from the other end before turning)
+        // top/bottom, not inset-y: Tailwind's inset-y and py are logical (block), sideways in
+        // vertical writing, so the padding is set physically below
+        "absolute top-0 bottom-0 z-10 flex w-[28px] items-center bg-accent " +
+        "text-[10px] font-semibold uppercase tracking-[0.32em] text-white hover:bg-brand " +
+        (edge === "right" ? "right-0 justify-start" : "left-0 justify-end")
       }
-      style={{ writingMode: "vertical-rl", transform: edge === "left" ? "rotate(180deg)" : undefined }}
+      style={{
+        writingMode: "vertical-rl", transform: edge === "left" ? "rotate(180deg)" : undefined,
+        paddingTop: 18, paddingBottom: 18,
+      }}
     >
       {LABEL[side]}
     </button>
@@ -99,23 +106,24 @@ export function InvoiceCard({ row, kind, onClose, onDuplicate }: {
 
   const dir = useDirection(row.id, at);
   return (
-    <div className={"relative " + (at < ORDER.length - 1 ? "pr-9 " : "") + (at > 0 ? "pl-9" : "")} style={{ perspective: 1600 }}>
+    // The sides slide: forward, the page leaves to the left and the next comes in from the right;
+    // back, the other way. overflow-x clip (not hidden) keeps pickers free to drop below the card.
+    <div className={"relative " + (at < ORDER.length - 1 ? "pr-[28px] " : "") + (at > 0 ? "pl-[28px]" : "")} style={{ overflowX: "clip" }}>
       {at > 0 && <EdgeTab side={ORDER[at - 1]!} edge="left" onClick={() => turn(ORDER[at - 1]!)} />}
       {at < ORDER.length - 1 && <EdgeTab side={ORDER[at + 1]!} edge="right" onClick={() => turn(ORDER[at + 1]!)} />}
-      <AnimatePresence mode="wait" initial={false} custom={dir}>
+      <AnimatePresence mode="popLayout" initial={false} custom={dir}>
         <motion.div
           key={side}
           custom={dir}
           variants={{
-            enter: (d: number) => ({ rotateY: d * 75, opacity: 0 }),
-            center: { rotateY: 0, opacity: 1 },
-            exit: (d: number) => ({ rotateY: -d * 75, opacity: 0 }),
+            enter: (d: number) => ({ x: `${d * 100}%` }),
+            center: { x: "0%" },
+            exit: (d: number) => ({ x: `${-d * 100}%` }),
           }}
           initial="enter"
           animate="center"
           exit="exit"
-          transition={{ duration: 0.22, ease: "easeInOut" }}
-          style={{ transformOrigin: dir > 0 ? "left center" : "right center" }}
+          transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
         >
           {page}
         </motion.div>
