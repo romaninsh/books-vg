@@ -2,17 +2,19 @@
 # The books' rules, checked against the live database (after tests/load.sh).
 # usage: tests/invariants.sh      (exit code = number of failed checks)
 # Target: the same SURREAL_* variables as tests/surql.sh.
+# SURREAL_RUNNER=ws goes over the WebSocket instead (tests/surql_ws.mjs; tests/load_cloud.sh sets it).
 cd "$(dirname "$0")/.."
 FAIL=0
+q() { if [ "${SURREAL_RUNNER:-}" = ws ]; then node tests/surql_ws.mjs -f; else tests/surql.sh - -f; fi; }
 # check "<name>" "<SurrealQL>" "<expected substring of the output>"
 check() {
-  local out; out=$(echo "$2" | tests/surql.sh - -f 2>&1)
+  local out; out=$(echo "$2" | q 2>&1)
   if [[ "$out" == *"$3"* ]]; then echo "ok   $1"; else echo "FAIL $1 — got: $(echo "$out" | tr '\n' ' ' | cut -c1-300)"; FAIL=$((FAIL+1)); fi
 }
 
 # The data's own figures: the anonymiser keeps every amount, so these never move. Which data is
 # loaded (tests/load.sh) is told by its document count: the full books or the sample.
-docs=$(echo 'RETURN count((SELECT id FROM doc));' | tests/surql.sh - -f | sed 's/^#1 OK  //')
+docs=$(echo 'RETURN count((SELECT id FROM doc));' | q | sed 's/^#1 OK  //')
 case "$docs" in
   1642) ALLOCATED=316807.19 INVOICED=372936.27 ;;  # tests/seed.surql
   241)  ALLOCATED=65424.89 INVOICED=64746.02 ;;    # tests/sample.surql
