@@ -75,10 +75,11 @@ jobs:
           cache: npm
           cache-dependency-path: web/books/package-lock.json
 
-      # a step, not a service container: services can't be given the `start` command line
+      # a step, not a service container: services can't be given the `start` command line.
+      # The 3.x line, as production (SurrealDB Cloud 3.x) and composer.yaml.
       - name: Start SurrealDB
         run: |
-          docker run -d --name surrealdb -p 8000:8000 surrealdb/surrealdb:v4.0.0 start --user root --pass root memory
+          docker run -d --name surrealdb -p 8000:8000 surrealdb/surrealdb:v3 start --user root --pass root memory
           for _ in $(seq 60); do curl -fs "$SURREAL_HTTP/health" > /dev/null && exit 0; sleep 1; done
           echo "SurrealDB at $SURREAL_HTTP did not answer in 60 s"; docker logs --tail 40 surrealdb 2>&1; exit 1
 
