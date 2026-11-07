@@ -1,0 +1,188 @@
+# yaml-language-server: $schema=./api-schema-1.json
+# The web frontend's API (web/books/). Reads are live entities; every write will be an
+# atomic action (docs/frontend-plan.md). `refresh:` re-reads what other writers change (the
+# desktop, MCP, totals computed over lines and allocations): SurrealDB tables have no live feed.
+title: Books
+description: Books. Sorted. — invoices, contacts and the ledger for the web app.
+
+entities:
+  - name: sales_invoices
+    observe: sale_invoice
+    read_only: true
+    params:
+      columns: [doc, doc.date, number, doc.reference, contact, contact.name, due_date,
+                net, vat, gross, paid, amount_due, status]
+      filter: [doc, contact, contact.name, number, doc.reference, doc.date, due_date, status, amount_due, gross]
+      default_sort: { column: doc.date, direction: desc }
+    api: { collection_limit: 200, refresh: 5 }
+
+  - name: purchase_invoices
+    observe: purchase_invoice
+    read_only: true
+    params:
+      columns: [doc, doc.date, number, doc.reference, contact, contact.name, due_date,
+                net, vat, gross, paid, amount_due, status]
+      filter: [doc, contact, contact.name, number, doc.reference, doc.date, due_date, status, amount_due, gross]
+      default_sort: { column: doc.date, direction: desc }
+    api: { collection_limit: 200, refresh: 5 }
+
+  - name: invoice_lines
+    observe: invoice_line
+    read_only: true
+    params:
+      columns: [doc, rank, description, nominal, nominal.path, quantity, price, vat_rate, vat]
+      filter: [doc]
+      default_sort: rank
+
+  # Files of a document, opened with the invoice (filter by doc); added and removed only
+  # through save-invoice.
+  - name: attachments
+    observe: attachment
+    read_only: true
+    params:
+      columns: [doc, name, mime, size, data, added_at]
+      filter: [doc]
+      default_sort: name
+    api: { refresh: 5 }
+
+  - name: allocations
+    observe: allocation
+    read_only: true
+    params:
+      columns: [payment, payment.date, payment.type, payment.reference, invoice, invoice.date, invoice_number, amount]
+      filter: [payment, invoice]
+      default_sort: { column: payment.date, direction: asc }
+    api: { refresh: 5 }
+
+  # Money received from customers (lodgements) and paid to suppliers; written by save-payment.
+  - name: lodgements
+    observe: lodgement
+    read_only: true
+    params:
+      columns: [doc, doc.date, doc.reference, doc.total, contact, contact.name, bank_account,
+                bank_account.name, allocated, unallocated]
+      filter: [doc, contact, contact.name, doc.reference, doc.date, bank_account, unallocated]
+      default_sort: { column: doc.date, direction: desc }
+    api: { collection_limit: 200, refresh: 5 }
+
+  - name: supplier_payments
+    observe: supplier_payment
+    read_only: true
+    params:
+      columns: [doc, doc.date, doc.reference, doc.total, contact, contact.name, bank_account,
+                bank_account.name, allocated, unallocated]
+      filter: [doc, contact, contact.name, doc.reference, doc.date, bank_account, unallocated]
+      default_sort: { column: doc.date, direction: desc }
+    api: { collection_limit: 200, refresh: 5 }
+
+  - name: bank_accounts
+    observe: bank_account
+    read_only: true
+    params:
+      columns: [name, code, nominal_path, balance, transactions]
+      filter: [name, code]
+      default_sort: name
+    api: { load: instant, refresh: 10 }
+
+  - name: customers
+    observe: customer
+    read_only: true
+    params:
+      columns: [name, contact_name, email, telephone, address, city, county, country,
+                currency, vat_registered, vat_no, credit_terms, note, outstanding]
+      filter: [name, country, currency, vat_registered]
+      default_sort: name
+    api: { load: instant }
+
+  - name: suppliers
+    observe: supplier
+    read_only: true
+    params:
+      columns: [name, contact_name, email, telephone, address, city, county, country,
+                currency, vat_registered, vat_no, credit_terms, note, outstanding]
+      filter: [name, country, currency, vat_registered]
+      default_sort: name
+    api: { load: instant }
+
+  - name: nominals
+    observe: nominal
+    read_only: true
+    params:
+      columns: [code, name, path, parent, type, bp, rank, transactions]
+      filter: [code, path, type, bp, parent]
+      default_sort: code
+    api: { load: instant, refresh: 10 }
+
+  # The audit log (application.yaml log_changes/log_events): read-only by nature. Run
+  # arguments (`args`) stay out: they repeat the whole saved form.
+  - name: activity
+    observe: audit_event
+    params:
+      columns: [logged_at, who, action, table, record, event, group, before, after, doc, contact]
+      filter: [doc, contact, table, group, logged_at, who]
+      default_sort: { column: logged_at, direction: desc }
+    api: { collection_limit: 200, refresh: 5 }
+
+  # Reports: query tables derived from the documents on every read (never stored).
+  - name: trial_balance
+    observe: trial_balance
+    read_only: true
+    params:
+      columns: [nominal, code, nominal_path, nominal_type, bp, postings, balance]
+      filter: [bp, nominal_type, code]
+      default_sort: code
+    api: { load: instant }
+
+  - name: ledger
+    observe: nominal_sheet
+    read_only: true
+    params:
+      columns: [doc, date, doc_type, reference, nominal_code, nominal_path, bank, amount]
+      filter: [nominal_code, doc_type, date, doc, reference, bank]
+      default_sort: { column: date, direction: desc }
+    api: { collection_limit: 500 }
+
+  - name: nominal_months
+    observe: nominal_month
+    read_only: true
+    params:
+      columns: [nominal, code, nominal_path, nominal_type, bp, year, month, total]
+      filter: [bp, year, code]
+      default_sort: code
+    api: { load: instant }
+
+  # Misc payments and lodgements (bank ↔ a nominal), written by save-misc.
+  - name: misc
+    observe: misc
+    read_only: true
+    params:
+      columns: [doc, doc.date, doc.type, doc.reference, doc.contact_name, doc.description, doc.total,
+                bank_account, bank_account.name, nominal, nominal.code, nominal.path]
+      filter: [doc, doc.type, doc.date, doc.reference, doc.contact_name, bank_account, nominal]
+      default_sort: { column: doc.date, direction: desc }
+    api: { collection_limit: 200, refresh: 5 }
+
+  - name: company
+    observe: company
+    read_only: true
+    params:
+      columns: [name, fy_start_month, vat_no, address, email]
+    api: { load: instant, refresh: 10 }
+
+  - name: aged_debt
+    observe: aged_debt
+    read_only: true
+    params:
+      columns: [contact, name, ctype, current, d30, d60, d90, older, total]
+      filter: [ctype]
+      default_sort: name
+
+actions: [save-invoice, save-payment, save-contact, save-misc, save-nominal, save-bank-account, save-company,
+          delete-doc, delete-contact, delete-nominal, stage-file]
+
+auth:
+  local: none
+  ci: none
+  # Deployed without sign-in, like sap-vg: anyone with the URL can read and change everything this
+  # API serves (anonymised demo books). Switch to `session` before it holds real books.
+  prod: none

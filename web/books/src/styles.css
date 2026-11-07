@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+/* The "emerald" palette, as design tokens. */
+@theme {
+  --color-brand: #40625f;
+  --color-brand-dark: #395d5a;
+  --color-brand-darker: #2c4a47;
+  --color-accent: #31847d;
+  --color-highlight: #e3fffd;
+  --color-chrome: #d6dadd;
+  --color-chrome-light: #eceeef;
+  --color-ink: #272b2d;
+  --color-ink-soft: #3f4446;
+  --color-muted: #777777;
+  --color-danger: #d93025;
+  --color-success: #1e8e3e;
+  --color-warning: #b26a00;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  --text-xs: 11.5px;
+  --text-sm: 13px;
+}
+
+html, body, #root { height: 100%; }
+body {
+  @apply bg-white text-ink font-sans text-sm antialiased;
+  font-feature-settings: "tnum" 1, "cv11" 1;
+}
+
+/* Visible keyboard focus everywhere. */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+/* the open record docked at a list's edge (DataList `dock`): opaque, raised over the rows */
+.docked {
+  position: relative; z-index: 15; background: white;
+  box-shadow: 0 0 0 1px var(--color-accent), 0 8px 24px rgba(0, 0, 0, 0.22);
+}
+
+/* the search box is the whole palette: no ring inside it */
+[cmdk-input]:focus-visible { outline: none; }
+
+.num { font-variant-numeric: tabular-nums; text-align: right; }
+
+/* Record state: one colour each, a left bar and a pale tint, changing calmly in this order
+   (lists/draftRows.tsx `stateClass`):
+     draft  — changed, not saved          amber bar, cream
+     saving — on its way to the server    teal bar, cool grey, a slow line moving underneath
+     held   — saved, waiting to be read   green bar, mint (steady: no blink back to old values)
+     saved  — read back                   the mint fades out once
+     failed — refused                     red bar, rose, one nudge
+   Only the move into "saved" and "failed" animates; the rest are steady colours. */
+.row-dirty, .row-saving, .row-held, .row-failed { transition: background-color 0.25s ease, box-shadow 0.25s ease; }
+.row-dirty { box-shadow: inset 4px 0 0 #e0a100 !important; background-color: #fffaeb !important; }
+.row-saving { box-shadow: inset 4px 0 0 var(--color-accent) !important; background-color: #eef3f6 !important; }
+.row-saving::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--color-accent), transparent) no-repeat;
+  background-size: 30% 100%;
+  animation: shimmer 1.8s ease-in-out infinite;
+}
+.row-held { box-shadow: inset 4px 0 0 var(--color-success) !important; background-color: #e8f6ee !important; }
+.row-saved { animation: mint 1.4s ease-out 1; }
+.row-failed { box-shadow: inset 4px 0 0 var(--color-danger) !important; background-color: #fff4f3 !important; animation: shake 0.35s ease-in-out 1; }
+/* changed by someone else while on screen: an amber wash, then a dot that stays until opened */
+.row-remote { animation: amber 2.8s ease-out 1; }
+@keyframes amber { 0%, 30% { background-color: #ffe9a8; } 100% { background-color: transparent; } }
+/* the Activity button glows the same way when a change from elsewhere arrives */
+.activity-flash { animation: glow 2.8s ease-out 1; }
+@keyframes glow { 0%, 30% { background-color: rgba(255, 214, 102, 0.75); } 100% { background-color: transparent; } }
+
+@keyframes shimmer { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+@keyframes mint { from { background-color: #e8f6ee; box-shadow: inset 4px 0 0 var(--color-success); } to { background-color: transparent; box-shadow: inset 4px 0 0 transparent; } }
+@keyframes shake {
+  0%, 100% { transform: translateX(0); } 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); }
+}
+.delta-up { color: var(--color-accent); }
+.delta-down { color: var(--color-danger); }
+
+@media (prefers-reduced-motion: reduce) {
+  .row-failed, .row-saved, .row-remote, .activity-flash, .row-saving::after { animation: none; }
+}
+
+/* Editor inputs: high contrast on white. */
+.field {
+  @apply h-7 w-full rounded border border-[#9aa3a6] bg-white px-2 text-sm text-ink outline-none;
+}
+.field:focus { @apply border-accent ring-2 ring-accent/20; }
+.field[aria-invalid="true"] { @apply border-danger; }

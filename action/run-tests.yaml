@@ -1,0 +1,265 @@
+# yaml-language-server: $schema=./action-schema-1.json
+# In-app test runner. Each test is a closure over the data vocabulary returning "" (pass)
+# or a message (fail). Results are written to test_result, one row per test.
+# Add a test: append a #{ key, name, run } map to `tests` and put its key in a suite
+# (`suites` near the end); each suite has its own page under Tests.
+# No `state:` on purpose: that would open a run sheet that stays up after the run. The
+# results show in the Tests page grid; a toast gives the totals.
+kind: script
+body: |
+  // Money equality to the penny. A script function, so the test closures can call it.
+  fn close(a, b) { (a - b).abs() < 0.005 }
+  fn join(list, sep) { list.reduce(|a, x| if a == () { x } else { a + sep + x }) }
+  // true when the write in `f` is refused (throws)
+  fn refused(f) { let r = false; try { f.call(); } catch { r = true; } r }
+
+  let tests = [
+    #{ key: "ledger_zero", name: "Ledger sums to zero",
+       run: || {
+         let s = 0.0;
+         for r in table("trial_balance").list() { s += r.balance; }
+         if close(s, 0.0) { "" } else { `trial balance sums to ${s}` }
+       } },
+
+    #{ key: "docs_balance", name: "Every document balances",
+       run: || {
+         let n = table("doc_balance").where("balanced", false).count();
+         if n == 0 { "" } else { `${n} documents don't sum to zero` }
+       } },
+
+    #{ key: "docs_post", name: "Every document posts to the ledger",
+       run: || {
+         let d = table("doc").count();
+         let b = table("doc_balance").count();
+         if d == b { "" } else { `${d} documents, ${b} with postings` }
+       } },
+
+    #{ key: "misc_two_postings", name: "Misc documents post exactly twice",
+       run: || {
+         let kinds = ["misc_payment", "misc_lodgement"];
+         let m = table("misc").count();
+         let p = table("nominal_sheet").where("doc_type", "in", kinds).count();
+         let wrong = table("doc_balance").where("doc_type", "in", kinds).where("postings", "!=", 2).count();
+         if p == 2 * m && wrong == 0 { "" } else { `${m} misc, ${p} postings, ${wrong} docs without 2 postings` }
+       } },
+
+    #{ key: "misc_extension", name: "Every misc document has its misc row",
+       run: || {
+         let d = table("doc").where("type", "in", ["misc_payment", "misc_lodgement"]).count();
+         let m = table("misc").count();
+         if d == m { "" } else { `${d} misc documents, ${m} misc rows` }
+       } },
+
+    #{ key: "bank_codes", name: "Every bank code resolves to a nominal",
+       run: || {
+         let bad = [];
+         for b in table("bank_account").list() { if b.nominal_path == () { bad.push(`${b.name} (${b.code})`); } }
+         if bad.is_empty() { "" } else { "no nominal for " + join(bad, ", ") }
+       } },
+
+    #{ key: "postings_nominal", name: "Every posting has a nominal",
+       run: || {
+         let bad = 0;
+         let n = 0;
+         for r in table("trial_balance").list() { n += r.postings; if r.code == () { bad += r.postings; } }
+         let p = table("nominal_sheet").count();
+         if bad == 0 && n == p { "" } else { `${bad} postings without a nominal; trial balance covers ${n} of ${p}` }
+       } },
+
+    #{ key: "exports_reconcile", name: "Matches the source exports (misc nominals)",
+       run: || {
+         let expected = #{
+           "Corporation Tax": 29445.61, "Directors Payroll": 25086.00, "Employee Payroll": 159941.05,
+           "Finance Charges:Currency Difference": 39.04, "Interest": -73.68,
+           "Legal and Professional Fees": 220.83, "Office/Property": 1632.47,
+           "Other Direct Costs:Internet": 39.00, "Other:Health": 3166.45,
+           "Other:Software Subscription": 5802.86, "Payroll:Pension": 200.00,
+           "Travel and Subsistence:Entertainment": 500.00,
+           "Travel and Subsistence:Travel and Subsistence": 5652.56, "VAT": 15851.62 };
+         // the misc side only: other document kinds post to these nominals too
+         let misc = table("nominal_sheet").where("doc_type", "in", ["misc_payment", "misc_lodgement"]);
+         let rows = misc.list();
+         if rows.len() != misc.count() { return `read ${rows.len()} of ${misc.count()} misc postings`; }
+         let got = #{};
+         for r in rows { got[r.nominal_path] = (got[r.nominal_path] ?? 0.0) + r.amount; }
+         let bad = [];
+         for p in expected.keys() {
+           let g = got[p] ?? 0.0;
+           if !close(g, expected[p]) { bad.push(`${p}: ${g} ≠ ${expected[p]}`); }
+         }
+         if bad.is_empty() { "" } else { join(bad, "; ") }
+       } },
+
+    #{ key: "misc_round_trip", name: "Misc payment and lodgement post correctly, delete cleans up",
+       run: || {
+         let out = [];
+         for kind in ["misc_payment", "misc_lodgement"] {
+           let d = table("doc").insert(#{ type: kind, date: "2026-01-01", total: 10.0, contact_name: "TEST runner" });
+           let m = table("misc").insert(#{ doc: d, bank_account: "bank_account:barclays_current", nominal: "nominal:office_property" });
+           let sign = if kind == "misc_payment" { -1.0 } else { 1.0 };
+           try {
+             let bank = table("nominal_sheet").where("id", "nominal_sheet:" + m + "_bank").first();
+             let nom = table("nominal_sheet").where("id", "nominal_sheet:" + m + "_nominal").first();
+             if bank == () || nom == () { out.push(`${kind}: postings missing`); }
+             else {
+               if bank.nominal_code != "15000" || !close(bank.amount, 10.0 * sign) { out.push(`${kind}: bank side ${bank.nominal_code} ${bank.amount}`); }
+               if nom.nominal_code != "66000" || !close(nom.amount, -10.0 * sign) { out.push(`${kind}: nominal side ${nom.nominal_code} ${nom.amount}`); }
+             }
+           } catch (e) { out.push(`${kind}: ${e}`); }
+           // always clean up; deleting the misc row must take its document with it
+           table("misc").delete(m);
+           if table("doc").where("id", "doc:" + d).count() != 0 { out.push(`${kind}: document left behind after delete`); }
+         }
+         if out.is_empty() { "" } else { join(out, "; ") }
+       } },
+
+    #{ key: "control_debtors", name: "Debtors equals what customers owe (invoices due − on account)",
+       run: || {
+         let tb = table("trial_balance").where("nominal_path", "Debtors").first();
+         let owed = 0.0;
+         for c in table("customer").list() { owed += c.outstanding; }
+         if close(tb.balance, owed) { "" } else { `Debtors ${tb.balance}, customers owe ${owed}` }
+       } },
+
+    #{ key: "control_creditors", name: "Creditors equals what we owe suppliers",
+       run: || {
+         let tb = table("trial_balance").where("nominal_path", "Creditors").first();
+         let owe = 0.0;
+         for s in table("supplier").list() { owe += s.outstanding; }
+         if close(tb.balance, -owe) { "" } else { `Creditors ${tb.balance}, we owe suppliers ${owe}` }
+       } },
+
+    #{ key: "exports_debtors", name: "Matches the source exports: Debtors, Creditors, unpaid sales invoices",
+       run: || {
+         let out = [];
+         let d = table("trial_balance").where("nominal_path", "Debtors").first().balance;
+         let c = table("trial_balance").where("nominal_path", "Creditors").first().balance;
+         // the source keeps 12-decimal base amounts: allow a few pence of rounding
+         if (d - 64955.98).abs() > 0.05 { out.push(`Debtors ${d} ≠ 64,955.98`); }
+         if (c - 68.48).abs() > 0.05 { out.push(`Creditors ${c} ≠ 68.48 (debit)`); }
+         let unpaid = [];
+         for n in ["51", "52", "53", "54"] {
+           let i = table("sale_invoice").where("number", n).first();
+           if i == () || !close(i.amount_due, i.gross) { unpaid.push(n); }
+         }
+         if !unpaid.is_empty() { out.push("not fully unpaid: " + join(unpaid, ", ")); }
+         if out.is_empty() { "" } else { join(out, "; ") }
+       } },
+
+    #{ key: "invoice_round_trip", name: "Sales invoice posts Debtors/Sales/VAT; a payment settles it",
+       run: || {
+         let out = [];
+         let d = table("doc").insert(#{ type: "sale", date: "2026-01-01" });
+         let inv = table("invoice").insert(#{ doc: d, contact: "contact:c_cambridge_genomix", number: "TEST-1" });
+         table("invoice_line").insert(#{ doc: d, nominal: "nominal:sales", quantity: 2.0, price: 50.0, vat_rate: 20.0, vat: 20.0 });
+         let p = ();
+         try {
+           let rows = table("nominal_sheet").where("doc", "doc:" + d).list();
+           let by = #{};
+           for r in rows { by[r.nominal_code] = r.amount; }
+           if !close(by["14000"] ?? 0.0, 120.0) || !close(by["41000"] ?? 0.0, -100.0) || !close(by["23000"] ?? 0.0, -20.0) {
+             out.push(`postings ${by}`);
+           }
+           let i = table("invoice").get("invoice:" + inv);
+           if !close(i.amount_due, 120.0) { out.push(`due before payment ${i.amount_due}`); }
+           p = table("doc").insert(#{ type: "lodgement", date: "2026-01-02", total: 120.0 });
+           table("payment").insert(#{ doc: p, contact: "contact:c_cambridge_genomix", bank_account: "bank_account:barclays_current" });
+           table("allocation").insert(#{ payment: p, invoice: d, amount: 120.0 });
+           let i = table("invoice").get("invoice:" + inv);
+           if !close(i.amount_due, 0.0) || i.status != "paid" { out.push(`after payment due ${i.amount_due} status ${i.status}`); }
+           let bal = table("doc_balance").where("doc", "in", ["doc:" + d, "doc:" + p]).where("balanced", false).count();
+           if bal != 0 { out.push("unbalanced documents"); }
+         } catch (e) { out.push(`${e}`); }
+         // clean up: deleting the documents takes lines, extensions and allocations with them
+         if p != () { table("doc").delete(p); }
+         table("doc").delete(d);
+         let left = table("invoice_line").where("doc", "doc:" + d).count() + table("allocation").where("invoice", "doc:" + d).count();
+         if left != 0 { out.push(`${left} rows left after delete`); }
+         if out.is_empty() { "" } else { join(out, "; ") }
+       } },
+
+    #{ key: "nominal_primary_delete", name: "Primary nominals can't be deleted or moved",
+       run: || {
+         let out = [];
+         if !refused(|| table("nominal").delete("nominal:vat")) { out.push("deleting VAT was allowed"); }
+         if table("nominal").get("nominal:vat") == () { out.push("VAT is gone"); }
+         if !refused(|| table("nominal").patch("nominal:vat", #{ parent: "nominal:payroll" })) { out.push("moving VAT under Payroll was allowed"); }
+         if out.is_empty() { "" } else { join(out, "; ") }
+       } },
+
+    #{ key: "nominal_sub_lifecycle", name: "Sub-nominals inherit from their parent and delete when unused",
+       run: || {
+         let out = [];
+         let id = table("nominal").insert(#{ id: "nominal:test_sub", name: "TEST sub", parent: "nominal:other" });
+         try {
+           let n = table("nominal").get("nominal:test_sub");
+           if n.code != "69000" || n.type != "Expense" || n.bp != "P" || n.path != "Other:TEST sub" {
+             out.push(`inherited ${n.code} ${n.type} ${n.bp} ${n.path}`);
+           }
+         } catch (e) { out.push(`${e}`); }
+         if refused(|| table("nominal").delete("nominal:test_sub")) { out.push("unused sub-nominal could not be deleted"); }
+         if out.is_empty() { "" } else { join(out, "; ") }
+       } },
+
+    #{ key: "nominal_used_delete", name: "Sub-nominals with transactions can't be deleted",
+       run: || {
+         if refused(|| table("nominal").delete("nominal:other_software_subscription")) { "" }
+         else { "deleting Other:Software Subscription (260 transactions) was allowed" }
+       } },
+
+    #{ key: "nominal_move", name: "Sub-nominals move only inside their primary nominal",
+       run: || {
+         let out = [];
+         table("nominal").insert(#{ id: "nominal:test_sub", name: "TEST sub", parent: "nominal:other" });
+         try {
+           if !refused(|| table("nominal").patch("nominal:test_sub", #{ parent: "nominal:finance_charges" })) {
+             out.push("moved from Other (69000) to Finance Charges (63000)");
+           }
+           if refused(|| table("nominal").patch("nominal:test_sub", #{ parent: "nominal:other_health" })) {
+             out.push("move to Other:Health was refused");
+           } else if table("nominal").get("nominal:test_sub").path != "Other:Health:TEST sub" {
+             out.push(`path after move: ${table("nominal").get("nominal:test_sub").path}`);
+           }
+           if !refused(|| table("nominal").patch("nominal:other_health", #{ parent: "nominal:test_sub" })) {
+             out.push("Other:Health moved under its own sub-nominal");
+           }
+           if !refused(|| table("nominal").delete("nominal:other_health")) {
+             out.push("Other:Health deleted while it had a sub-nominal");
+           }
+         } catch (e) { out.push(`${e}`); }
+         // clean up: put Health back if a refusal failed, then remove the test nominal
+         try { table("nominal").patch("nominal:other_health", #{ parent: "nominal:other" }); } catch {}
+         try { table("nominal").delete("nominal:test_sub"); } catch (e) { out.push(`cleanup: ${e}`); }
+         if out.is_empty() { "" } else { join(out, "; ") }
+       } },
+  ];
+
+  // Each Tests page runs one suite: actions.run_tests(#{ suite: "ledger" }). No suite = all.
+  let suites = #{
+    ledger: ["ledger_zero", "docs_balance", "docs_post", "postings_nominal", "bank_codes",
+             "control_debtors", "control_creditors"],
+    documents: ["misc_extension", "misc_two_postings", "misc_round_trip", "invoice_round_trip"],
+    nominals: ["nominal_primary_delete", "nominal_sub_lifecycle", "nominal_used_delete", "nominal_move"],
+    exports: ["exports_reconcile", "exports_debtors"],
+  };
+  let want = args.suite ?? "";
+  if want != "" && !(want in suites) { throw `unknown test suite "${want}"`; }
+
+  let passed = 0;
+  let failed = 0;
+  for i in 0..tests.len() {
+    let t = tests[i];
+    let suite = "";
+    for s in suites.keys() { if t.key in suites[s] { suite = s; } }
+    if want != "" && suite != want { continue; }
+    let detail = "";
+    try { detail = t.run.call(); } catch (e) { detail = `error: ${e}`; }
+    let ok = detail == "";
+    if ok { passed += 1; } else { failed += 1; }
+    table("test_result").upsert("test_result:" + t.key, #{
+      suite: suite, seq: i + 1, name: t.name, status: if ok { "pass" } else { "fail" },
+      // now() itself is refused by SurrealDB (CBOR tag 0, see FEEDBACK.md): store it as text
+      detail: if ok { "" } else { detail }, ran_at: `${now()}` });
+  }
+  notify(if failed == 0 { `All ${passed} tests passed` } else { `${failed} of ${passed + failed} tests failed` });
+  #{ passed: passed, failed: failed }

@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=./page-schema-1.json
+# Left: the chart of accounts as a tree; drag to re-order or move a sub-nominal inside its
+# primary nominal. Right: add, edit and delete. The database refuses what the rules forbid.
+title: Nominals
+body:
+  - kind: row
+    children:
+      - kind: tree
+        name: chart
+        observe: nominal
+        width: 640
+        height: 860
+        params:
+          parent: parent
+          title: name
+          rank: rank
+          reparent: true
+          # only sub-nominals move, and only inside their own primary nominal
+          allowed: 'row.parent != () && row.parent != "" && parent != () && parent.root_code == row.root_code'
+          expand: 1
+          columns:
+            code: { label: Code, width: 70 }
+            type: { label: Type, width: 140 }
+            transactions: { label: Transactions, rollup: sum, width: 100 }
+      - kind: binder
+        name: nominals
+        observe: nominal
+        height: 860
+        params:
+          default_sort: { column: path, direction: asc }
+          filter: [type, bp, parent]
+          columns:
+            code: { label: Code, width: 70 }
+            path: { label: Nominal }
+            transactions: { label: Transactions, width: 100 }

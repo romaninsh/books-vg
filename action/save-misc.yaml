@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=./action-schema-1.json
+# Save a misc payment (money out) or misc lodgement (money in): bank ↔ a nominal picked by
+# hand, no customer or supplier. One transaction: the document and its misc row.
+#
+# args: type "misc_payment" | "misc_lodgement", doc?, date, reference, contact_name,
+#       description, bank_account, nominal, amount (> 0)
+# Returns #{ doc }. Field problems throw "FIELDS:" + JSON before anything is written.
+kind: script
+atomic: true
+body: |
+  let a = args;
+  let kind = a.type ?? "";
+  if kind != "misc_payment" && kind != "misc_lodgement" { throw "type must be misc_payment or misc_lodgement"; }
+  let errors = #{};
+  if (a.date ?? "") == "" { errors["date"] = "Date is required"; }
+  if (a.bank_account ?? "") == "" { errors["bank_account"] = "Pick a bank account"; }
+  if (a.nominal ?? "") == "" { errors["nominal"] = "Pick a nominal"; }
+  if (a.amount ?? 0.0) <= 0.0 { errors["amount"] = "Enter the amount"; }
+  if !errors.is_empty() { throw "FIELDS:" + errors.to_json(); }
+
+  let doc = a.doc ?? "";
+  let d = #{ type: kind, date: a.date, total: a.amount };
+  for k in ["reference", "contact_name", "description"] {
+    let v = a[k] ?? "";
+    if v != "" || doc != "" { d[k] = v; }   // "" clears on edit (a null is refused)
+  }
+  let m = #{ bank_account: a.bank_account, nominal: a.nominal };
+  if doc == "" {
+    doc = table("doc").insert(d);
+    m.doc = doc;
+    table("misc").insert(m);
+  } else {
+    table("doc").patch(doc, d);
+    for id in table("misc").where("doc", doc).ids() { table("misc").patch(id, m); }
+  }
+  #{ doc: if doc.contains(":") { doc } else { "doc:" + doc } }

@@ -1,0 +1,16 @@
+# local: this Mac (SurrealDB from composer.yaml). ci: the pull-request checks (a throwaway SurrealDB).
+# prod: the deployed web app (SurrealDB Cloud; Cloud Run passes the values as environment variables).
+# Each env file sets SECRET_SURREAL_URL, SURREAL_NS and SURREAL_DB; none is in git or the image.
+profiles:
+  local: { env_file: .env }
+  ci: { env_file: .env.ci }
+  prod: { env_file: .env.prod }
+
+# The audit trail: every change and every action run, with who did it.
+# File contents stay out of it: `data` (attachment rows) and the files a save carries.
+log_changes:
+  into: audit_event
+  exclude: [data]
+log_events:
+  into: audit_event
+  exclude: [add_files]

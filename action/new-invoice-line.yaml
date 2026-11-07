@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=./action-schema-1.json
+# One invoice line. VAT left blank is worked out from the rate; type an amount to override
+# it (reverse charge: a rate but no VAT).
+kind: form
+dialog:
+  title: Add line
+  confirm_label: Add
+form:
+  fields:
+    - { name: description, type: string, label: Description, required: false, multiline: true }
+    - name: nominal
+      label: Nominal
+      type: string
+      widget: dropdown
+      option_label: path
+      options: |
+        table("nominal")
+    - { name: quantity, type: float, label: Quantity, default: "1" }
+    - { name: price, type: float, label: Price }
+    - { name: vat_rate, type: float, label: "VAT %", default: "20" }
+    - { name: vat, type: float, label: "VAT amount (blank = from rate)", required: false }

@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=./table-schema-1.json
+# Bank accounts (credit card and directors loan too). A bank stores only its nominal code;
+# postings go to the top-level nominal with that code (15000 Bank accounts, …).
+datasource: surrealdb
+title: Bank accounts
+columns:
+  id: { type: string, flags: [id, hidden] }
+  name: { type: string, label: Name, flags: [title, mandatory, searchable] }
+  code: { type: string, label: Nominal code, flags: [mandatory, searchable] }
+  nominal_path:
+    type: string
+    label: Nominal
+    expr: 'surreal::expr("(SELECT VALUE path FROM nominal WHERE code = $parent.code AND parent = NONE)[0]")'
+  # money in minus money out: misc lodgements/payments and customer/supplier payments
+  balance:
+    type: float
+    label: Balance
+    unit: { currency: "£" }
+    expr: 'surreal::expr("math::fixed(math::sum((SELECT VALUE doc.total * (IF doc.type = ''misc_lodgement'' THEN 1 ELSE -1 END) FROM misc WHERE bank_account = $parent.id)) + math::sum((SELECT VALUE doc.total * (IF doc.type = ''lodgement'' THEN 1 ELSE -1 END) FROM payment WHERE bank_account = $parent.id)), 2)")'
+  transactions:
+    type: int
+    label: Transactions
+    expr: 'surreal::expr("count((SELECT id FROM misc WHERE bank_account = $parent.id)) + count((SELECT id FROM payment WHERE bank_account = $parent.id))")'
+references:
+  misc: { table: misc, kind: has_many, foreign_key: bank_account }

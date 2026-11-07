@@ -1,0 +1,105 @@
+# yaml-language-server: $schema=./action-schema-1.json
+# Save a whole sales or purchase invoice in one transaction (atomic: true): a new contact
+# when the form created one, the document, its invoice row and all its lines. Either all of
+# it is stored or none of it, so a failed save leaves no stray customer behind and the web
+# app can simply retry.
+#
+# args:
+#   type        "sale" | "purchase"
+#   doc         existing document id when editing (lines are replaced), else absent
+#   date, due_date, number, reference
+#   contact     existing contact id, or
+#   new_contact { name, country, currency, vat_no, email, credit_terms }
+#   lines       [ { description, nominal, quantity, price, vat_rate, vat } ]
+#   add_files   [ { upload, chunks, name, mime, size } ]  pieces staged by stage-file.yaml
+#   remove_files [ attachment ids ]               of this document only
+#   allocate_to [ { invoice, amount } ]  a credit note settling invoices (replaces its allocations)
+# Returns #{ doc, contact }. Field problems throw "FIELDS:" + JSON map field → message
+# (keys like "date", "contact", "lines.2.nominal") before anything is written.
+kind: script
+atomic: true
+body: |
+  let a = args;
+  let kind = a.type ?? "";
+  if kind != "sale" && kind != "purchase" { throw "type must be sale or purchase"; }
+  let who = if kind == "sale" { "customer" } else { "supplier" };
+
+  let errors = #{};
+  if (a.date ?? "") == "" { errors["date"] = "Date is required"; }
+  let nc = a.new_contact;
+  if (a.contact ?? "") == "" && nc == () { errors["contact"] = `Pick or create a ${who}`; }
+  if nc != () && (nc.name ?? "") == "" { errors["contact"] = `The new ${who} needs a name`; }
+  let lines = a.lines ?? [];
+  if lines.is_empty() { errors["lines"] = "Add at least one line"; }
+  for i in 0..lines.len() {
+    let l = lines[i];
+    if (l.nominal ?? "") == "" { errors[`lines.${i}.nominal`] = "Pick a nominal"; }
+    if l.price == () { errors[`lines.${i}.price`] = "Price is required"; }
+    if (l.quantity ?? 1.0) == 0.0 { errors[`lines.${i}.quantity`] = "Quantity can't be zero"; }
+  }
+  let files = a.add_files ?? [];
+  let pieces = [];   // per file: its staged pieces, in order
+  for f in files {
+    let got = if (f.upload ?? "") == "" { [] } else { table("file_chunk").where("upload", f.upload).sort("seq", "asc").list() };
+    if (f.name ?? "") == "" || got.len() != (f.chunks ?? -1) { errors["files"] = `${f.name ?? "A file"} didn't arrive whole: save again`; }
+    else if (f.size ?? 0) > 8000000 { errors["files"] = `${f.name} is over 8 MB`; }
+    pieces.push(got);
+  }
+  if !errors.is_empty() { throw "FIELDS:" + errors.to_json(); }
+
+  // --- writes: one transaction ---------------------------------------------------------
+  let contact = a.contact;
+  if nc != () {
+    let m = #{ type: if kind == "sale" { "client" } else { "supplier" }, name: nc.name };
+    for k in ["country", "currency", "vat_no", "email", "contact_name"] {
+      if (nc[k] ?? "") != "" { m[k] = nc[k]; }
+    }
+    if nc.credit_terms != () { m.credit_terms = nc.credit_terms; }
+    contact = table("contact").insert(m);
+  }
+
+  let d = #{ type: kind, date: a.date };
+  if (a.reference ?? "") != "" { d.reference = a.reference; }
+  let inv = #{ contact: contact };
+  if (a.number ?? "") != "" { inv.number = a.number; }
+  if (a.due_date ?? "") != "" { inv.due_date = a.due_date; }
+
+  let doc = a.doc ?? "";
+  if doc == "" {
+    doc = table("doc").insert(d);
+    inv.doc = doc;
+    table("invoice").insert(inv);
+  } else {
+    table("doc").patch(doc, d);
+    for id in table("invoice").where("doc", doc).ids() { table("invoice").patch(id, inv); }
+    for id in table("invoice_line").where("doc", doc).ids() { table("invoice_line").delete(id); }
+  }
+  for i in 0..lines.len() {
+    let l = lines[i];
+    let row = #{ doc: doc, rank: i + 1, nominal: l.nominal, quantity: l.quantity ?? 1.0, price: l.price,
+                 vat_rate: l.vat_rate ?? 0.0, vat: l.vat ?? 0.0 };
+    if (l.description ?? "") != "" { row.description = l.description; }
+    table("invoice_line").insert(row);
+  }
+  for i in 0..files.len() {
+    let f = files[i];
+    let data = "";
+    for p in pieces[i] { data += p.data; }
+    table("attachment").insert(#{ doc: doc, name: f.name, mime: f.mime ?? "application/octet-stream",
+                                  size: f.size ?? 0, data: data });
+    for p in pieces[i] { table("file_chunk").delete(p.id); }
+  }
+  if a.allocate_to != () {
+    for id in table("allocation").where("payment", doc).ids() { table("allocation").delete(id); }
+    for x in a.allocate_to {
+      if (x.amount ?? 0.0) > 0.0 { table("allocation").insert(#{ payment: doc, invoice: x.invoice, amount: x.amount }); }
+    }
+  }
+  let removing = a.remove_files ?? [];
+  if !removing.is_empty() {
+    for id in table("attachment").where("doc", doc).ids() {
+      if removing.contains(id) { table("attachment").delete(id); }
+    }
+  }
+  let full = |table, id| if id.contains(":") { id } else { table + ":" + id };
+  #{ doc: full.call("doc", doc), contact: full.call("contact", contact) }

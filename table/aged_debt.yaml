@@ -1,0 +1,40 @@
+# yaml-language-server: $schema=./table-schema-1.json
+# What each customer owes us and we owe each supplier, by how long it is past its due date
+# (today's date). Unpaid invoices only; credit notes count against the total. Money on
+# account (unallocated payments) is not netted off, as in a typical Aged Debtor report.
+datasource: surrealdb
+title: Aged debt
+columns:
+  id: { type: string, flags: [id, hidden] }
+  contact: { type: string, label: Contact, references: contact }
+  name: { type: string, label: Name, flags: [title, searchable] }
+  ctype: { type: string, label: Type }
+  current: { type: float, label: Not yet due, unit: { currency: "£" } }
+  d30: { type: float, label: "1–30 days", unit: { currency: "£" } }
+  d60: { type: float, label: "31–60 days", unit: { currency: "£" } }
+  d90: { type: float, label: "61–90 days", unit: { currency: "£" } }
+  older: { type: float, label: Over 90 days, unit: { currency: "£" } }
+  total: { type: float, label: Total, unit: { currency: "£" } }
+surreal:
+  rhai: |
+    let due = "math::sum((SELECT VALUE math::fixed(quantity * price, 2) + vat FROM invoice_line WHERE doc = $parent.doc))"
+        + " - (math::sum((SELECT VALUE amount FROM allocation WHERE invoice = $parent.doc))"
+        + " - math::sum((SELECT VALUE amount FROM allocation WHERE payment = $parent.doc)))";
+    let age = "IF due_date = NONE THEN 0 ELSE duration::days(time::floor(time::now(), 1d) - due_date) END";
+    let bucket = |cond| "math::fixed(math::sum(IF " + cond + " THEN due ELSE 0 END), 2)";
+    let grouped = "(SELECT contact"
+        + ", math::fixed(math::sum(due), 2) AS total"
+        + ", " + bucket.call("age < 1") + " AS current"
+        + ", " + bucket.call("age >= 1 AND age <= 30") + " AS d30"
+        + ", " + bucket.call("age > 30 AND age <= 60") + " AS d60"
+        + ", " + bucket.call("age > 60 AND age <= 90") + " AS d90"
+        + ", " + bucket.call("age > 90") + " AS older"
+        + " FROM (SELECT contact, due, " + age + " AS age FROM (SELECT contact, due_date, " + due + " AS due FROM invoice)"
+        + " WHERE math::abs(due) >= 0.005) GROUP BY contact)";
+    surreal::select()
+        .from(surreal::expr(grouped))
+        .expression(surreal::expr("type::record('aged_debt', record::id(contact))").alias("id"))
+        .field("contact").field("total").field("current").field("d30").field("d60").field("d90").field("older")
+        .expression(surreal::expr("contact.name").alias("name"))
+        .expression(surreal::expr("contact.type").alias("ctype"))
+        .order_by(surreal::ident("name"), "asc")

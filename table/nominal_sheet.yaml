@@ -1,0 +1,75 @@
+# yaml-language-server: $schema=./table-schema-1.json
+# The nominal sheet: the double-entry ledger, derived from documents on every read and
+# never stored. Amounts in GBP; debit +, credit −. Each document's postings sum to zero.
+#   misc payment   : bank −total, nominal +total
+#   misc lodgement : bank +total, nominal −total
+#   sale           : Debtors (14000) +gross; each line: its nominal −net, VAT (23000) −vat
+#   purchase       : Creditors (21000) −gross; each line: its nominal +net, VAT (23000) +vat
+#   lodgement      : bank +total, Debtors (14000) −total
+#   payment        : bank −total, Creditors (21000) +total
+# Control nominals are found by code; a bank by its own code. The ledger carries no contact.
+# Performance: lookups are inline subqueries (indexed via $parent); a function parameter in
+# a WHERE skips the index, ~10× slower. The invoice control posting sums the lines grouped by
+# document, so no invoice totals are computed.
+datasource: surrealdb
+title: Nominal sheet
+columns:
+  id: { type: string, flags: [id, hidden] }
+  date: { type: date, label: Date }
+  doc_type: { type: string, label: Type }
+  reference: { type: string, label: Reference, flags: [searchable] }
+  nominal_code: { type: string, label: Code, flags: [searchable] }
+  nominal_path: { type: string, label: Nominal, flags: [title, searchable] }
+  nominal_type: { type: string, label: Nominal type }
+  bp: { type: string, label: "B/P" }
+  bank: { type: string, label: Bank account }
+  amount: { type: float, label: Amount, unit: { currency: "£" } }
+  doc: { type: string, flags: [hidden], references: doc }
+  nominal: { type: string, flags: [hidden], references: nominal }
+surreal:
+  rhai: |
+    let by_code = |code| "(SELECT VALUE id FROM nominal WHERE code = " + code + " AND parent = NONE LIMIT 1)[0]";
+    let pid = |suffix| "type::record('nominal_sheet', record::id(id) + '" + suffix + "') AS id, ";
+    let doc_cols = "doc, doc.date AS date, doc.type AS doc_type, doc.reference AS reference";
+    let line_net = "math::fixed(quantity * price, 2)";
+
+    // misc payments / lodgements: bank side and nominal side
+    let misc_sign = "(IF doc.type = 'misc_lodgement' THEN 1 ELSE -1 END)";
+    let misc_bank = "SELECT " + pid.call("_bank") + doc_cols + ", bank_account.name AS bank, "
+        + by_code.call("$parent.bank_account.code") + " AS nominal, doc.total * " + misc_sign + " AS amount FROM misc";
+    let misc_nominal = "SELECT " + pid.call("_nominal") + doc_cols + ", bank_account.name AS bank"
+        + ", nominal, doc.total * -" + misc_sign + " AS amount FROM misc";
+
+    // invoices: control side per document (its lines grouped), net and VAT per line
+    let sale_sign = "(IF doc.type = 'sale' THEN 1 ELSE -1 END)";
+    let inv_ctrl = "SELECT type::record('nominal_sheet', record::id(doc) + '_ctrl') AS id, " + doc_cols
+        + ", NONE AS bank, " + by_code.call("(IF $parent.doc.type = 'sale' THEN '14000' ELSE '21000' END)") + " AS nominal"
+        + ", gross * " + sale_sign + " AS amount"
+        + " FROM (SELECT doc, math::sum(" + line_net + " + vat) AS gross FROM invoice_line GROUP BY doc)";
+    let line_net_post = "SELECT " + pid.call("_net") + doc_cols + ", NONE AS bank"
+        + ", nominal, " + line_net + " * -" + sale_sign + " AS amount FROM invoice_line";
+    let line_vat = "SELECT " + pid.call("_vat") + doc_cols + ", NONE AS bank, "
+        + by_code.call("'23000'") + " AS nominal, vat * -" + sale_sign + " AS amount"
+        + " FROM invoice_line WHERE vat != 0";
+
+    // lodgements (from customers) and payments (to suppliers): bank side and control side
+    let in_sign = "(IF doc.type = 'lodgement' THEN 1 ELSE -1 END)";
+    let pay_bank = "SELECT " + pid.call("_bank") + doc_cols + ", bank_account.name AS bank, "
+        + by_code.call("$parent.bank_account.code") + " AS nominal, doc.total * " + in_sign + " AS amount FROM payment";
+    let pay_ctrl = "SELECT " + pid.call("_ctrl") + doc_cols + ", bank_account.name AS bank, "
+        + by_code.call("(IF $parent.doc.type = 'lodgement' THEN '14000' ELSE '21000' END)") + " AS nominal"
+        + ", doc.total * -" + in_sign + " AS amount FROM payment";
+
+    let all = "";
+    for p in [misc_bank, misc_nominal, inv_ctrl, line_net_post, line_vat, pay_bank, pay_ctrl] {
+        all += (if all == "" { "(" } else { ", (" }) + p + ")";
+    }
+    surreal::select()
+        .from(surreal::expr("array::concat(" + all + ")"))
+        .field("id").field("doc").field("date").field("doc_type").field("reference")
+        .field("bank").field("nominal").field("amount")
+        .expression(surreal::expr("nominal.code").alias("nominal_code"))
+        .expression(surreal::expr("nominal.path").alias("nominal_path"))
+        .expression(surreal::expr("nominal.type").alias("nominal_type"))
+        .expression(surreal::expr("nominal.bp").alias("bp"))
+        .order_by(surreal::ident("date"), "desc")

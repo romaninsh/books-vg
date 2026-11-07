@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=./table-schema-1.json
+# Lodgements: `payment` rows whose document is a lodgement.
+datasource: surrealdb
+title: Lodgements
+columns:
+  id: { type: string, flags: [id, hidden] }
+  doc: { type: string, label: Document, references: doc }   # not hidden: the web app reads it
+  doc.type: { type: string, label: Type }
+  doc.date: { type: date, label: Date }
+  doc.reference: { type: string, label: Reference, flags: [searchable] }
+  doc.total: { type: float, label: Amount, unit: { currency: "£" } }
+  contact: { type: string, label: Customer, flags: [mandatory], references: { table: customer, kind: has_one, name: contact } }
+  contact.name: { type: string, label: Customer, flags: [searchable] }
+  bank_account: { type: string, label: Bank account, flags: [mandatory], references: bank_account }
+  bank_account.name: { type: string, label: Bank account }
+  # worked out from allocations on every read (never stored)
+  allocated:
+    type: float
+    label: Allocated
+    unit: { currency: "£" }
+    expr: 'surreal::expr("math::fixed(math::sum((SELECT VALUE amount FROM allocation WHERE payment = $parent.doc)), 2)")'
+  unallocated:
+    type: float
+    label: On account
+    unit: { currency: "£" }
+    expr: 'surreal::expr("math::fixed(doc.total - math::sum((SELECT VALUE amount FROM allocation WHERE payment = $parent.doc)), 2)")'
+references:
+  allocations: { table: allocation, kind: has_many, foreign_key: payment_row }
+surreal:
+  table: payment
+  modify: |
+    self.with_condition(surreal::expr("doc.type = 'lodgement'"))

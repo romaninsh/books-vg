@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=./table-schema-1.json
+# Customers and suppliers in one table; table/customer.yaml and table/supplier.yaml narrow it.
+datasource: surrealdb
+title: Contacts
+columns:
+  id: { type: string, flags: [id, hidden] }
+  type: { type: string, label: Type, enum: [client, supplier], flags: [mandatory] }
+  name: { type: string, label: Name, flags: [title, mandatory, searchable] }
+  contact_name: { type: string, label: Contact person, flags: [searchable] }
+  email: { type: string, label: Email, flags: [searchable] }
+  telephone: { type: string, label: Telephone }
+  address: { type: string, label: Address }
+  city: { type: string, label: City }
+  county: { type: string, label: County }
+  country: { type: string, label: Country }
+  currency: { type: string, label: Currency, enum: [GBP, EUR, USD] }
+  vat_registered: { type: bool, label: VAT registered }
+  vat_no: { type: string, label: VAT number }
+  credit_terms: { type: int, label: Credit terms (days) }
+  note: { type: string, label: Note }
+  outstanding:
+    type: float
+    label: Outstanding
+    unit: { currency: "£" }
+    expr: 'surreal::expr("math::fixed(math::sum((SELECT VALUE (math::sum((SELECT VALUE math::fixed(quantity * price, 2) FROM invoice_line WHERE doc = $parent.doc)) + math::sum((SELECT VALUE vat FROM invoice_line WHERE doc = $parent.doc)) - (math::sum((SELECT VALUE amount FROM allocation WHERE invoice = $parent.doc)) - math::sum((SELECT VALUE amount FROM allocation WHERE payment = $parent.doc)))) FROM invoice WHERE contact = $parent.id)) - math::sum((SELECT VALUE doc.total - math::sum((SELECT VALUE amount FROM allocation WHERE payment = $parent.doc)) FROM payment WHERE contact = $parent.id)), 2)")'
+references:
+  invoices: { table: invoice, kind: has_many, foreign_key: contact }

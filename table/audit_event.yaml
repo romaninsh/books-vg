@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=./table-schema-1.json
+# The audit log: every new, edit and delete made through Vantage (desktop, API, actions),
+# and every action run. Written by Vantage only (application.yaml log_changes/log_events).
+datasource: surrealdb
+title: Audit log
+columns:
+  id: { type: string, flags: [id, hidden] }
+  # stamped by SurrealDB (tests/schema.surql); no `at` column, since Vantage's datetime
+  # write is refused by SurrealDB (FEEDBACK.md)
+  logged_at: { type: timestamp, label: When }
+  who: { type: string, label: Who, flags: [searchable] }
+  action: { type: string, label: Action }
+  table: { type: string, label: Table }
+  record: { type: string, label: Record }
+  event: { type: string, label: Message }
+  # not hidden: the web app groups a run's changes by it (hidden columns aren't served)
+  group: { type: string, label: Run }
+  before: { type: string, label: Before }
+  after: { type: string, label: After }
+  args: { type: string, label: Arguments }
+  # context: the document (and contact) a change belongs to, filled from the changed row
+  doc: { type: string, label: Document, references: doc }
+  contact: { type: string, label: Contact, references: contact }

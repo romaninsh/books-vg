@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=./page-schema-1.json
+title: Lodgements
+body:
+  - kind: binder
+    name: payments
+    observe: lodgement
+    params:
+      allow_add: false
+      default_sort: { column: doc.date, direction: desc }
+      filter: [contact, bank_account]
+      columns:
+        doc.date: { label: Date }
+        doc.reference: { label: Reference }
+        contact.name: { label: Customer }
+        bank_account.name: { label: Bank account }
+        doc.total: { label: Amount }
+        allocated: { label: Allocated }
+        unallocated: { label: On account }

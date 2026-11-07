@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=./action-schema-1.json
+# Add a sub-nominal, rename a nominal, or move a sub-nominal. The database rules
+# (tests/schema.surql) refuse moving outside the primary nominal's tree and anything that
+# would loop; their message comes back as the error.
+#
+# args: id? (absent: new sub-nominal), parent (required for new / to move), name, code?
+#       (a sub-nominal's own code; blank: the parent's)
+# Returns #{ nominal }.
+kind: script
+atomic: true
+body: |
+  let a = args;
+  let name = a.name ?? "";
+  name.trim();
+  let errors = #{};
+  if name == "" { errors["name"] = "Name is required"; }
+  if name.contains(":") { errors["name"] = "A name can't contain ':' (it separates levels)"; }
+  let id = a.id ?? "";
+  if id == "" && (a.parent ?? "") == "" { errors["parent"] = "New nominals go under an existing one"; }
+  if !errors.is_empty() { throw "FIELDS:" + errors.to_json(); }
+
+  if id == "" {
+    let m = #{ name: name, parent: a.parent };
+    if (a.code ?? "") != "" { m.code = a.code; }
+    id = table("nominal").insert(m);
+  } else {
+    let m = #{ name: name };
+    if (a.parent ?? "") != "" { m.parent = a.parent; }
+    if (a.code ?? "") != "" { m.code = a.code; }
+    table("nominal").patch(id, m);
+  }
+  #{ nominal: if id.contains(":") { id } else { "nominal:" + id } }

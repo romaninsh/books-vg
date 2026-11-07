@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=./action-schema-1.json
+# One piece of a file on its way to an invoice. The web app sends a file in pieces small
+# enough for one API message; save-invoice joins them (add_files: [{ upload, chunks, … }]).
+# Sending a piece again replaces it, so a retried upload never doubles anything.
+#
+# args: upload (the file's id in the draft), seq (0-based), data (base64 text)
+kind: script
+log_events: false          # the arguments are the file itself
+body: |
+  let up = args.upload ?? "";
+  if up == "" || args.seq == () || (args.data ?? "") == "" { throw "upload, seq and data are required"; }
+  if args.data.len() > 400000 { throw "piece too large"; }
+  table("file_chunk").upsert(`file_chunk:${up}_${args.seq}`, #{ upload: up, seq: args.seq, data: args.data });
+  #{ ok: true }

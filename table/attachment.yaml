@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=./table-schema-1.json
+# Files attached to a document. Written only by action/save-invoice.yaml, together with the
+# invoice; `data` is the file as base64 text.
+datasource: surrealdb
+title: Attachments
+columns:
+  id: { type: string, flags: [id, hidden] }
+  doc: { type: string, label: Document, references: doc }
+  name: { type: string, label: File, flags: [title, searchable] }
+  mime: { type: string, label: Type }
+  size: { type: int, label: Size }
+  data: { type: string, label: Content }
+  # stamped by SurrealDB (DEFAULT time::now())
+  added_at: { type: timestamp, label: Added }

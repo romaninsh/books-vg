@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=./page-schema-1.json
+title: Suppliers
+body:
+  - kind: binder
+    name: suppliers
+    observe: supplier
+    params:
+      default_sort: { column: name, direction: asc }
+      filter: [country, currency, vat_registered]
+      columns:
+        name: { label: Name }
+        contact_name: { label: Contact person }
+        email: { label: Email }
+        telephone: { label: Telephone }
+        country: { label: Country }
+        currency: { label: Currency }
+        vat_registered: { label: VAT registered }
+        credit_terms: { label: Terms (days) }

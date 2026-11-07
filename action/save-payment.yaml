@@ -1,0 +1,56 @@
+# yaml-language-server: $schema=./action-schema-1.json
+# Save a payment received (lodgement) or made (payment) with what it settles, in one
+# transaction: the document, its payment row and its allocations. Whatever isn't allocated
+# stays on account. Editing replaces the allocations.
+#
+# args:
+#   type         "lodgement" (money in, from a customer) | "payment" (money out, to a supplier)
+#   doc          existing document id when editing, else absent
+#   date, reference
+#   contact      contact id
+#   bank_account bank_account id
+#   amount       > 0
+#   allocations  [ { invoice: invoice document id, amount } ]
+# Returns #{ doc }. Field problems throw "FIELDS:" + JSON before anything is written.
+kind: script
+atomic: true
+body: |
+  let a = args;
+  let kind = a.type ?? "";
+  if kind != "lodgement" && kind != "payment" { throw "type must be lodgement or payment"; }
+  let who = if kind == "lodgement" { "customer" } else { "supplier" };
+
+  let errors = #{};
+  if (a.date ?? "") == "" { errors["date"] = "Date is required"; }
+  if (a.contact ?? "") == "" { errors["contact"] = `Pick a ${who}`; }
+  if (a.bank_account ?? "") == "" { errors["bank_account"] = "Pick a bank account"; }
+  let amount = a.amount ?? 0.0;
+  if amount <= 0.0 { errors["amount"] = "Enter the amount"; }
+  let allocs = a.allocations ?? [];
+  let total = 0.0;
+  for i in 0..allocs.len() {
+    let x = allocs[i];
+    if (x.amount ?? 0.0) <= 0.0 { errors[`allocations.${i}.amount`] = "Must be more than zero"; }
+    total += x.amount ?? 0.0;
+  }
+  if total > amount + 0.004 { errors["allocations"] = "More is allocated than was paid"; }
+  if !errors.is_empty() { throw "FIELDS:" + errors.to_json(); }
+
+  // --- writes: one transaction ---------------------------------------------------------
+  let d = #{ type: kind, date: a.date, total: amount };
+  if (a.reference ?? "") != "" { d.reference = a.reference; }
+  let p = #{ contact: a.contact, bank_account: a.bank_account };
+  let doc = a.doc ?? "";
+  if doc == "" {
+    doc = table("doc").insert(d);
+    p.doc = doc;
+    table("payment").insert(p);
+  } else {
+    table("doc").patch(doc, d);
+    for id in table("payment").where("doc", doc).ids() { table("payment").patch(id, p); }
+    for id in table("allocation").where("payment", doc).ids() { table("allocation").delete(id); }
+  }
+  for x in allocs {
+    table("allocation").insert(#{ payment: doc, invoice: x.invoice, amount: x.amount });
+  }
+  #{ doc: if doc.contains(":") { doc } else { "doc:" + doc } }

@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=./page-schema-1.json
+# The lines of one invoice (opened from an invoice's "Edit lines"). Add stamps the document.
+title: "Lines · invoice ${args.number}"
+body:
+  - kind: binder
+    name: lines
+    observe:
+      script: 'scenery("invoice_line").where("doc", args.doc)'
+    params:
+      default_sort: { column: rank, direction: asc }
+      columns:
+        rank: { label: "#", width: 40 }
+        description: { label: Description }
+        nominal.path: { label: Nominal }
+        quantity: { label: Qty }
+        price: { label: Price }
+        net: { label: Net }
+        vat_rate: { label: "VAT %" }
+        vat: { label: VAT }
+        gross: { label: Gross }

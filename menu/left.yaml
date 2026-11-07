@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=./menu-schema-1.json
+title: Books. Sorted.
+items:
+  - section: Sales
+    icon: Receipt
+    children:
+      - { page: sales_invoices, label: Invoices, icon: Receipt }
+      - { page: lodgements, label: Lodgements, icon: Download }
+      - { page: customers, label: Customers, icon: Users }
+  - section: Purchases
+    icon: CreditCard
+    children:
+      - { page: purchase_invoices, label: Invoices, icon: CreditCard }
+      - { page: supplier_payments, label: Payments, icon: Upload }
+      - { page: suppliers, label: Suppliers, icon: Building }
+  - section: Accounts
+    icon: Landmark
+    children:
+      - { page: bank_accounts, label: Bank, icon: Landmark }
+      - { page: misc_payments, label: Misc Payments, icon: Banknote }
+  - section: Reports
+    icon: FileText
+    children:
+      - { page: nominal_sheet, label: Nominal Sheet, icon: BookOpen }
+      - { page: trial_balance, label: Trial Balance, icon: Scale }
+  - section: Tools
+    icon: Settings
+    children:
+      - { page: nominals, label: Nominals, icon: ListOrdered }
+  - section: Tests
+    icon: ListChecks
+    children:
+      - { page: tests_ledger, label: Ledger, icon: Scale }
+      - { page: tests_documents, label: Documents, icon: FileText }
+      - { page: tests_nominals, label: Nominals, icon: ListOrdered }
+      - { page: tests_exports, label: Source reconciliation, icon: ListChecks }

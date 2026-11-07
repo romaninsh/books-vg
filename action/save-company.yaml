@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=./action-schema-1.json
+# Save the company's details (the single row company:main).
+#
+# args: name, fy_start_month (1–12), vat_no, address, email
+kind: script
+atomic: true
+body: |
+  let a = args;
+  let name = a.name ?? "";
+  name.trim();
+  let errors = #{};
+  if name == "" { errors["name"] = "Company name is required"; }
+  let m = a.fy_start_month ?? 1;
+  if m < 1 || m > 12 { errors["fy_start_month"] = "A month, 1 to 12"; }
+  if !errors.is_empty() { throw "FIELDS:" + errors.to_json(); }
+  table("company").patch("company:main", #{ name: name, fy_start_month: m,
+    vat_no: a.vat_no ?? "", address: a.address ?? "", email: a.email ?? "" });
+  #{ company: "company:main" }

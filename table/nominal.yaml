@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=./table-schema-1.json
+# Chart of accounts. Primary nominals carry the code; sub-nominals sit under a parent and
+# take its type, B/P and (unless given their own) code. Delete/move rules live in the
+# database (tests/schema.surql) and are checked by the Tests page.
+datasource: surrealdb
+title: Nominals
+columns:
+  id: { type: string, flags: [id, hidden] }
+  name: { type: string, label: Name, flags: [mandatory, searchable] }
+  parent: { type: string, label: Parent, references: { table: nominal, kind: has_one, name: parent } }
+  code: { type: string, label: Code, flags: [searchable] }
+  path: { type: string, label: Nominal, flags: [title, searchable, calculated] }
+  type:
+    type: string
+    label: Type
+    enum: ["Fixed asset", "Current asset", "Current liability", "Long term liability",
+           "Capital & Reserves", "Income", "Cost of Sales", "Expense", "Other expense",
+           "Other income", "Taxation"]
+  bp: { type: string, label: "B/P", enum: [B, P] }
+  rank: { type: int, label: Order, flags: [hidden] }
+  root_code:
+    type: string
+    label: Primary code
+    expr: 'surreal::expr("fn::nominal_root(id).code")'
+  transactions:
+    type: int
+    label: Transactions
+    expr: 'surreal::expr("fn::nominal_usage(id)")'
+references:
+  children: { table: nominal, kind: has_many, foreign_key: parent }

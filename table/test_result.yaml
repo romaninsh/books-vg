@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=./table-schema-1.json
+# One row per test of the in-app runner (action/run-tests.yaml), overwritten on each run.
+datasource: surrealdb
+title: Test results
+columns:
+  id: { type: string, flags: [id, hidden] }
+  suite: { type: string, label: Suite, enum: [ledger, documents, nominals, exports] }
+  seq: { type: int, label: "#" }
+  name: { type: string, label: Test, flags: [title, searchable] }
+  status: { type: string, label: Result, enum: [pass, fail] }
+  detail: { type: string, label: Detail, flags: [searchable] }
+  # text, not timestamp: a timestamp write is refused by SurrealDB (see FEEDBACK.md)
+  ran_at: { type: string, label: Ran }
+# rewritten by every test run: not worth an audit entry
+log_changes: false

@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=./action-schema-1.json
+# Delete a sub-nominal nothing posts to. The database refuses primary nominals, nominals
+# with sub-nominals and nominals in use, with a message saying which.
+#
+# args: id
+kind: script
+atomic: true
+body: |
+  let id = args.id ?? "";
+  if id == "" { throw "id is required"; }
+  table("nominal").delete(id);
+  #{ nominal: id }

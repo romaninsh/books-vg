@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=./action-schema-1.json
+# Record money received for a sales invoice (or paid for a purchase invoice). The caller
+# prefills the amount due; anything above it stays on account.
+kind: form
+dialog:
+  title: Record payment
+  description: "Creates the payment and allocates it to this invoice. More than is due stays on account."
+  confirm_label: Record
+form:
+  fields:
+    - { name: date, type: date, label: Date }
+    - name: bank_account
+      label: Bank account
+      type: string
+      widget: dropdown
+      option_label: name
+      options: |
+        table("bank_account")
+    - { name: amount, type: float, label: "Amount (£)" }
+    - { name: reference, type: string, label: Reference, required: false }

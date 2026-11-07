@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=./table-schema-1.json
+# Every money movement is a document; each kind joins its own extension table by `doc`.
+datasource: surrealdb
+title: Documents
+columns:
+  id: { type: string, flags: [id, hidden] }
+  date: { type: date, label: Date, flags: [mandatory] }
+  type:
+    type: string
+    label: Type
+    flags: [mandatory]
+    enum: [misc_payment, misc_lodgement, sale, purchase]
+  reference: { type: string, label: Reference, flags: [title, searchable] }
+  contact_name: { type: string, label: Contact, flags: [searchable] }
+  description: { type: string, label: Description, flags: [searchable] }
+  total: { type: float, label: Amount, unit: { currency: "£" } }
+references:
+  misc: { table: misc, kind: has_many, foreign_key: doc }
+  invoice: { table: invoice, kind: has_many, foreign_key: doc }
+  lines: { table: invoice_line, kind: has_many, foreign_key: doc }

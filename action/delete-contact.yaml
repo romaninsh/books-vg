@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=./action-schema-1.json
+# Delete a customer or supplier that has no invoices or payments.
+#
+# args: id (contact id)
+kind: script
+atomic: true
+body: |
+  let id = args.id ?? "";
+  if id == "" { throw "id is required"; }
+  let c = table("contact").get(id);
+  if c == () { throw "That contact no longer exists"; }
+  let docs = table("invoice").where("contact", id).count() + table("payment").where("contact", id).count();
+  if docs > 0 { throw `${c.name} has ${docs} invoices or payments and can't be deleted`; }
+  table("contact").delete(id);
+  #{ contact: id }

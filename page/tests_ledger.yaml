@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=./page-schema-1.json
+title: Ledger tests
+body:
+  - kind: row
+    children:
+      - kind: label
+        params:
+          text: "The ledger balances: every document sums to zero, every posting has a nominal, Debtors and Creditors equal what customers and suppliers owe."
+          style: muted
+      - kind: button
+        name: run
+        params:
+          label: Run tests
+          icon: Play
+          style: primary
+          action: |
+            actions.run_tests(#{ suite: "ledger" });
+  - kind: grid
+    name: results
+    observe:
+      script: 'scenery("test_result").where("suite", "ledger")'
+    params:
+      default_sort: { column: seq, direction: asc }
+      columns:
+        seq: { label: "#", width: 40 }
+        name: { label: Test, width: 460 }
+        status:
+          label: Result
+          labels: { pass: Pass, fail: Fail }
+          color: { success: [pass], red: [fail] }
+        detail: { label: Detail }
+        ran_at: { label: Ran }

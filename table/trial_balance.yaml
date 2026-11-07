@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=./table-schema-1.json
+# Balance per nominal, summed from the nominal sheet. Balance-sheet nominals carry their
+# running balance, P&L nominals their total. All balances together sum to zero.
+datasource: surrealdb
+title: Trial balance
+columns:
+  id: { type: string, flags: [id, hidden] }
+  nominal: { type: string, flags: [hidden] }
+  code: { type: string, label: Code }
+  nominal_path: { type: string, label: Nominal, flags: [title, searchable] }
+  nominal_type: { type: string, label: Type }
+  bp: { type: string, label: "B/P" }
+  postings: { type: int, label: Postings }
+  balance: { type: float, label: Balance, unit: { currency: "£" } }
+surreal:
+  base: nominal_sheet
+  rhai: |
+    surreal::select()
+        .from(surreal::select()
+            .from(base.subquery())
+            .field("nominal")
+            .expression(surreal::expr("math::sum(amount)").alias("total"))
+            .expression(surreal::expr("count()").alias("postings"))
+            .group_by(surreal::ident("nominal"))
+            .subquery())
+        .expression(surreal::expr("type::record('trial_balance', record::id(nominal))").alias("id"))
+        .field("nominal").field("postings")
+        .expression(surreal::expr("math::fixed(total, 2)").alias("balance"))
+        .expression(surreal::expr("nominal.code").alias("code"))
+        .expression(surreal::expr("nominal.path").alias("nominal_path"))
+        .expression(surreal::expr("nominal.type").alias("nominal_type"))
+        .expression(surreal::expr("nominal.bp").alias("bp"))
+        .order_by(surreal::ident("code"), "asc")

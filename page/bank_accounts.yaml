@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=./page-schema-1.json
+title: Bank accounts
+body:
+  - kind: binder
+    name: banks
+    observe: bank_account
+    params:
+      default_sort: { column: name, direction: asc }
+      columns:
+        name: { label: Name }
+        code: { label: Code }
+        nominal_path: { label: Nominal }

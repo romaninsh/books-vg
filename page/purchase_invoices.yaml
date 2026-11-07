@@ -1,0 +1,69 @@
+# yaml-language-server: $schema=./page-schema-1.json
+title: Purchase invoices
+body:
+  - kind: binder
+    name: invoices
+    observe: purchase_invoice
+    params:
+      allow_add: false
+      default_sort: { column: doc.date, direction: desc }
+      filter: [contact]
+      columns:
+        doc.date: { label: Date }
+        number: { label: Invoice No }
+        doc.reference: { label: Reference }
+        contact.name: { label: Supplier }
+        due_date: { label: Due }
+        net: { label: Net }
+        vat: { label: VAT }
+        gross: { label: Gross }
+        paid: { label: Paid }
+        amount_due: { label: Amount due }
+        status:
+          label: Status
+          labels: { active: Active, partial: Part paid, overdue: Overdue, paid: Paid, overpaid: Overpaid }
+          color: { success: [paid], yellow: [partial], red: [overdue], muted: [active], blue: [overpaid] }
+      toolbar:
+        - label: New invoice
+          icon: Plus
+          action: |
+            let r = actions.new_invoice(#{ type: "purchase" });
+            let d = #{ type: "purchase", date: r.date };
+            if r.reference != () { d.reference = r.reference; }
+            let inv = #{ contact: r.contact };
+            if r.number != () { inv.number = r.number; }
+            if r.due_date != () { inv.due_date = r.due_date; }
+            atomic {
+              inv.doc = table("doc").insert(d);
+              table("invoice").insert(inv);
+            }
+      row_actions:
+        - label: Add line
+          icon: Plus
+          action: |
+            let r = actions.new_invoice_line(#{ quantity: 1.0, vat_rate: 20.0 });
+            let net = r.quantity * r.price;
+            let line = #{ doc: row.doc, nominal: r.nominal, quantity: r.quantity, price: r.price,
+                          vat_rate: r.vat_rate,
+                          vat: if r.vat != () { r.vat } else { (net * r.vat_rate).round() / 100.0 } };
+            if r.description != () { line.description = r.description; }
+            table("invoice_line").insert(line);
+        - label: Record payment
+          icon: Banknote
+          when: 'row.amount_due > 0.0'
+          action: |
+            let r = actions.record_payment(#{ amount: row.amount_due });
+            let d = #{ type: "payment", date: r.date, total: r.amount };
+            if r.reference != () { d.reference = r.reference; }
+            let part = if r.amount < row.amount_due { r.amount } else { row.amount_due };
+            atomic {
+              let id = table("doc").insert(d);
+              table("payment").insert(#{ doc: id, contact: row.contact, bank_account: r.bank_account });
+              table("allocation").insert(#{ payment: id, invoice: row.doc, amount: part });
+            }
+        - label: Edit lines
+          icon: List
+          navigate: invoice_lines
+          args:
+            doc: 'row.doc'
+            number: 'row.number'

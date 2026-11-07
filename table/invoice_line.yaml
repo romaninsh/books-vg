@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=./table-schema-1.json
+# Invoice lines (GBP). net / gross are computed by the database.
+datasource: surrealdb
+title: Invoice lines
+columns:
+  id: { type: string, flags: [id, hidden] }
+  doc: { type: string, label: Document, flags: [hidden], references: doc }
+  rank: { type: int, label: "#" }
+  description: { type: string, label: Description, flags: [title, searchable] }
+  nominal: { type: string, label: Nominal, flags: [mandatory], references: nominal }
+  nominal.path: { type: string, label: Nominal }
+  quantity: { type: float, label: Qty }
+  price: { type: float, label: Price }
+  net: { type: float, label: Net, flags: [calculated] }
+  vat_rate: { type: float, label: "VAT %" }
+  vat: { type: float, label: VAT }
+  gross: { type: float, label: Gross, flags: [calculated] }

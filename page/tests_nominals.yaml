@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=./page-schema-1.json
+title: Nominal tests
+body:
+  - kind: row
+    children:
+      - kind: label
+        params:
+          text: "Chart-of-accounts rules: primary nominals stay, sub-nominals delete only when unused and move only within their primary nominal."
+          style: muted
+      - kind: button
+        name: run
+        params:
+          label: Run tests
+          icon: Play
+          style: primary
+          action: |
+            actions.run_tests(#{ suite: "nominals" });
+  - kind: grid
+    name: results
+    observe:
+      script: 'scenery("test_result").where("suite", "nominals")'
+    params:
+      default_sort: { column: seq, direction: asc }
+      columns:
+        seq: { label: "#", width: 40 }
+        name: { label: Test, width: 460 }
+        status:
+          label: Result
+          labels: { pass: Pass, fail: Fail }
+          color: { success: [pass], red: [fail] }
+        detail: { label: Detail }
+        ran_at: { label: Ran }

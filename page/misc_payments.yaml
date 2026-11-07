@@ -1,0 +1,57 @@
+# yaml-language-server: $schema=./page-schema-1.json
+title: Misc payments & lodgements
+body:
+  - kind: binder
+    name: misc
+    observe: misc
+    params:
+      allow_add: false
+      default_sort: { column: doc.date, direction: desc }
+      filter: [bank_account, nominal, doc.type]
+      filters:
+        - { label: Payments, column: doc.type, op: eq, value: misc_payment, default: false }
+        - { label: Lodgements, column: doc.type, op: eq, value: misc_lodgement, default: false }
+      columns:
+        doc.date: { label: Date }
+        doc.type:
+          label: Type
+          labels: { misc_payment: Payment, misc_lodgement: Lodgement }
+          color: { red: [misc_payment], success: [misc_lodgement] }
+        doc.reference: { label: Reference }
+        doc.contact_name: { label: Paid to / from }
+        bank_account.name: { label: Bank account }
+        nominal.code: { label: Code }
+        nominal.path: { label: Nominal }
+        doc.total: { label: Amount }
+      toolbar:
+        - label: New payment
+          icon: Upload
+          action: |
+            let r = actions.new_misc(#{ type: "misc_payment" });
+            let d = #{ type: r.type, date: r.date, total: r.total };
+            for k in ["contact_name", "reference", "description"] { if r[k] != () { d[k] = r[k]; } }
+            atomic {
+              let id = table("doc").insert(d);
+              table("misc").insert(#{ doc: id, bank_account: r.bank_account, nominal: r.nominal });
+            }
+        - label: New lodgement
+          icon: Download
+          action: |
+            let r = actions.new_misc(#{ type: "misc_lodgement" });
+            let d = #{ type: r.type, date: r.date, total: r.total };
+            for k in ["contact_name", "reference", "description"] { if r[k] != () { d[k] = r[k]; } }
+            atomic {
+              let id = table("doc").insert(d);
+              table("misc").insert(#{ doc: id, bank_account: r.bank_account, nominal: r.nominal });
+            }
+      row_actions:
+        - label: Edit date, amount, payee
+          icon: Pencil
+          triggers: { double_click: true }
+          action: |
+            let r = actions.edit_misc_doc(#{
+              date: row["doc.date"], total: row["doc.total"], contact_name: row["doc.contact_name"],
+              reference: row["doc.reference"], description: row["doc.description"] });
+            let d = #{ date: r.date, total: r.total };
+            for k in ["contact_name", "reference", "description"] { if r[k] != () { d[k] = r[k]; } }
+            table("doc").patch(row.doc, d);

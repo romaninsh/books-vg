@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=./table-schema-1.json
+# Which invoice a payment (or a credit note) settles, and how much. Both sides are documents.
+datasource: surrealdb
+title: Allocations
+columns:
+  id: { type: string, flags: [id, hidden] }
+  payment: { type: string, label: Paid by, flags: [mandatory], references: { table: doc, kind: has_one, name: payment } }
+  payment.date: { type: date, label: Paid on }
+  payment.type: { type: string, label: Paid with }
+  payment.reference: { type: string, label: Payment ref }
+  invoice: { type: string, label: Invoice, flags: [mandatory], references: { table: doc, kind: has_one, name: invoice } }
+  invoice.date: { type: date, label: Invoice date }
+  invoice.reference: { type: string, label: Invoice ref }
+  amount: { type: float, label: Amount, flags: [mandatory], unit: { currency: "£" } }
+  # the settled invoice's number, for lists of what a payment paid
+  invoice_number:
+    type: string
+    label: Invoice No
+    expr: 'surreal::expr("(SELECT VALUE number FROM invoice WHERE doc = $parent.invoice)[0]")'

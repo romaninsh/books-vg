@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=./table-schema-1.json
+# Per document: how many postings it makes and what they sum to (must be 0.00).
+datasource: surrealdb
+title: Document balance
+columns:
+  id: { type: string, flags: [id, hidden] }
+  doc: { type: string, label: Document }
+  doc_type: { type: string, label: Type }
+  postings: { type: int, label: Postings }
+  balance: { type: float, label: Balance, unit: { currency: "£" } }
+  balanced: { type: bool, label: Balanced }
+surreal:
+  base: nominal_sheet
+  rhai: |
+    surreal::select()
+        .from(surreal::select()
+            .from(base.subquery())
+            .field("doc")
+            .expression(surreal::expr("array::first(array::group(doc_type))").alias("doc_type"))
+            .expression(surreal::expr("math::sum(amount)").alias("total"))
+            .expression(surreal::expr("count()").alias("postings"))
+            .group_by(surreal::ident("doc"))
+            .subquery())
+        .expression(surreal::expr("type::record('doc_balance', record::id(doc))").alias("id"))
+        .field("doc").field("doc_type").field("postings")
+        .expression(surreal::expr("math::fixed(total, 2)").alias("balance"))
+        .expression(surreal::expr("math::abs(total) < 0.005").alias("balanced"))

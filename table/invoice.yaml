@@ -1,0 +1,52 @@
+# yaml-language-server: $schema=./table-schema-1.json
+# Sales and purchase invoices: the extension of a `doc` of type sale / purchase.
+# net / vat / gross are computed from the lines by the database on every read.
+# table/sale_invoice.yaml and table/purchase_invoice.yaml narrow it by document type.
+datasource: surrealdb
+title: Invoices
+columns:
+  id: { type: string, flags: [id, hidden] }
+  # not hidden: the web app reads it to load the lines and allocations of the document
+  doc: { type: string, label: Document, references: doc }
+  doc.type: { type: string, label: Type }
+  doc.date: { type: date, label: Date }
+  doc.reference: { type: string, label: Reference }
+  number: { type: string, label: Invoice No, flags: [title, searchable] }
+  contact: { type: string, label: Contact, flags: [mandatory], references: contact }
+  contact.name: { type: string, label: Contact }
+  due_date: { type: date, label: Due }
+  # totals worked out from lines and allocations on every read (never stored)
+  net:
+    type: float
+    label: Net
+    unit: { currency: "£" }
+    expr: 'surreal::expr("math::fixed(math::sum((SELECT VALUE math::fixed(quantity * price, 2) FROM invoice_line WHERE doc = $parent.doc)), 2)")'
+  vat:
+    type: float
+    label: VAT
+    unit: { currency: "£" }
+    expr: 'surreal::expr("math::fixed(math::sum((SELECT VALUE vat FROM invoice_line WHERE doc = $parent.doc)), 2)")'
+  gross:
+    type: float
+    label: Gross
+    unit: { currency: "£" }
+    expr: 'surreal::expr("math::fixed(math::sum((SELECT VALUE math::fixed(quantity * price, 2) FROM invoice_line WHERE doc = $parent.doc)) + math::sum((SELECT VALUE vat FROM invoice_line WHERE doc = $parent.doc)), 2)")'
+  paid:
+    type: float
+    label: Paid
+    unit: { currency: "£" }
+    expr: 'surreal::expr("math::fixed((math::sum((SELECT VALUE amount FROM allocation WHERE invoice = $parent.doc)) - math::sum((SELECT VALUE amount FROM allocation WHERE payment = $parent.doc))), 2)")'
+  amount_due:
+    type: float
+    label: Amount due
+    unit: { currency: "£" }
+    expr: 'surreal::expr("math::fixed((math::sum((SELECT VALUE math::fixed(quantity * price, 2) FROM invoice_line WHERE doc = $parent.doc)) + math::sum((SELECT VALUE vat FROM invoice_line WHERE doc = $parent.doc)) - (math::sum((SELECT VALUE amount FROM allocation WHERE invoice = $parent.doc)) - math::sum((SELECT VALUE amount FROM allocation WHERE payment = $parent.doc)))), 2)")'
+  status:
+    type: string
+    label: Status
+    enum: [active, partial, overdue, paid, overpaid]
+    expr: 'surreal::expr("IF math::abs((math::sum((SELECT VALUE math::fixed(quantity * price, 2) FROM invoice_line WHERE doc = $parent.doc)) + math::sum((SELECT VALUE vat FROM invoice_line WHERE doc = $parent.doc)) - (math::sum((SELECT VALUE amount FROM allocation WHERE invoice = $parent.doc)) - math::sum((SELECT VALUE amount FROM allocation WHERE payment = $parent.doc))))) < 0.005 THEN ''paid'' ELSE IF (math::sum((SELECT VALUE math::fixed(quantity * price, 2) FROM invoice_line WHERE doc = $parent.doc)) + math::sum((SELECT VALUE vat FROM invoice_line WHERE doc = $parent.doc)) - (math::sum((SELECT VALUE amount FROM allocation WHERE invoice = $parent.doc)) - math::sum((SELECT VALUE amount FROM allocation WHERE payment = $parent.doc)))) < 0 THEN ''overpaid'' ELSE IF due_date != NONE AND due_date < time::floor(time::now(), 1d) THEN ''overdue'' ELSE IF math::abs((math::sum((SELECT VALUE amount FROM allocation WHERE invoice = $parent.doc)) - math::sum((SELECT VALUE amount FROM allocation WHERE payment = $parent.doc)))) >= 0.005 THEN ''partial'' ELSE ''active'' END")'
+references:
+  lines: { table: invoice_line, kind: has_many, keys: { doc: doc } }
+  payments: { table: allocation, kind: has_many, keys: { invoice: doc } }
+  settles: { table: allocation, kind: has_many, keys: { payment: doc } }

@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=./action-schema-1.json
+# New misc payment / misc lodgement. The caller passes `type`; the toolbar body writes the
+# `doc` and its `misc` extension together.
+kind: form
+dialog:
+  title: "New misc payment or lodgement"
+  description: "Money in or out of a bank account with no invoice. Pick the nominal it belongs to."
+  confirm_label: Save
+form:
+  fields:
+    - { name: type, type: string, readonly: true, label: Type }
+    - { name: date, type: date, label: Date }
+    - name: bank_account
+      label: Bank account
+      type: string
+      widget: dropdown
+      option_label: name
+      options: |
+        table("bank_account")
+    - name: nominal
+      label: Nominal
+      type: string
+      widget: dropdown
+      option_label: path
+      options: |
+        table("nominal")
+    - { name: total, type: float, label: "Amount (£)" }
+    - { name: contact_name, type: string, label: "Paid to / from", required: false }
+    - { name: reference, type: string, label: Reference, required: false }
+    - { name: description, type: string, label: Description, required: false, multiline: true }

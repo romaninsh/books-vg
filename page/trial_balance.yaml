@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=./page-schema-1.json
+title: Trial balance
+body:
+  - kind: grid
+    name: tb
+    observe: trial_balance
+    params:
+      search: true
+      default_sort: { column: code, direction: asc }
+      columns:
+        code: { label: Code, width: 80 }
+        nominal_path: { label: Nominal, width: 320 }
+        nominal_type: { label: Type }
+        bp: { label: "B/P", labels: { B: Balance sheet, P: Profit & loss } }
+        postings: { label: Postings }
+        balance: { label: Balance }

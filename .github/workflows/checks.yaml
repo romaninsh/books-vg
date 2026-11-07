@@ -1,0 +1,127 @@
+# PR checks. `summary` is the one required check (vantage-terraform's ruleset) and fails when a job
+# it needs failed or was cancelled. `stack` runs the app for real: a throwaway SurrealDB with the
+# schema and the anonymised books, the bookkeeping rules (tests/invariants.sh), then vantage-server
+# serving api/books.yaml under the `ci` profile, probed over its WebSocket. Pull requests only: a
+# merge to main has already passed them, and main runs only the deploy.
+name: checks
+
+on:
+  pull_request:
+
+permissions: {}
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SERVER_IMAGE: romaninsh/vantage-server:1.12.3
+
+jobs:
+  web:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: web/books
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/books/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  workflows:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+        run: |
+          curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            | tar -xz actionlint
+          ./actionlint -color
+
+  stack:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      SURREAL_HTTP: http://127.0.0.1:8000
+      API: http://127.0.0.1:8090
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/books/package-lock.json
+
+      # a step, not a service container: services can't be given the `start` command line
+      - name: Start SurrealDB
+        run: |
+          docker run -d --name surrealdb -p 8000:8000 surrealdb/surrealdb:v4.0.0 start --user root --pass root memory
+          for _ in $(seq 60); do curl -fs "$SURREAL_HTTP/health" > /dev/null && exit 0; sleep 1; done
+          echo "SurrealDB at $SURREAL_HTTP did not answer in 60 s"; docker logs --tail 40 surrealdb 2>&1; exit 1
+
+      - name: Load the schema and the books
+        run: tests/load.sh
+
+      - name: Bookkeeping rules
+        run: tests/invariants.sh
+
+      - name: Build the web app
+        working-directory: web/books
+        run: npm ci && npm run build
+
+      - name: Start vantage-server (profile ci)
+        run: |
+          # the ci profile's env file (application.yaml); the runner is thrown away after the job
+          printf '%s\n' "SECRET_SURREAL_URL=cbor://root:root@127.0.0.1:8000" SURREAL_NS=app SURREAL_DB=app > .env.ci
+          docker run -d --name vantage --network host \
+            -v "$PWD:/app/project:ro" -v "$PWD/web/books/dist:/app/web:ro" \
+            -e VANTAGE_API=books -e VANTAGE_PROFILE=ci \
+            "$SERVER_IMAGE" --static /app/web
+          for _ in $(seq 90); do curl -fs "$API/v1/ready" > /dev/null && exit 0; sleep 1; done
+          echo "vantage-server did not report ready in 90 s; its last lines:"; docker logs --tail 40 vantage 2>&1; exit 1
+
+      - name: Web probes
+        run: |
+          curl -fsS "$API/" | grep -q 'id="root"'
+          node tests/ws_probe.mjs "$API"
+
+      - name: Server log on failure
+        if: failure()
+        run: docker logs --tail 80 vantage 2>&1 || true
+
+  summary:
+    needs: [web, workflows, stack]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Every needed job passed or was skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          case " $RESULTS " in *" failure "*|*" cancelled "*) exit 1 ;; esac

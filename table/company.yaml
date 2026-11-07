@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=./table-schema-1.json
+# The company keeping these books: one row, company:main (tests/schema.surql creates it).
+# Its financial year start month groups the yearly reports.
+datasource: surrealdb
+title: Company
+columns:
+  id: { type: string, flags: [id, hidden] }
+  name: { type: string, label: Company name, flags: [title, mandatory] }
+  fy_start_month: { type: int, label: Financial year starts (month) }
+  vat_no: { type: string, label: VAT number }
+  address: { type: string, label: Address }
+  email: { type: string, label: Email }

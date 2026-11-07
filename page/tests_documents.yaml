@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=./page-schema-1.json
+title: Document tests
+body:
+  - kind: row
+    children:
+      - kind: label
+        params:
+          text: "Each document kind posts the right double entry; creating and deleting a document keeps the ledger clean."
+          style: muted
+      - kind: button
+        name: run
+        params:
+          label: Run tests
+          icon: Play
+          style: primary
+          action: |
+            actions.run_tests(#{ suite: "documents" });
+  - kind: grid
+    name: results
+    observe:
+      script: 'scenery("test_result").where("suite", "documents")'
+    params:
+      default_sort: { column: seq, direction: asc }
+      columns:
+        seq: { label: "#", width: 40 }
+        name: { label: Test, width: 460 }
+        status:
+          label: Result
+          labels: { pass: Pass, fail: Fail }
+          color: { success: [pass], red: [fail] }
+        detail: { label: Detail }
+        ran_at: { label: Ran }

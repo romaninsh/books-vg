@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=./action-schema-1.json
+# Delete a document: an invoice, payment or misc payment. Its extension row, lines,
+# allocations and attachments go with it (cascade events in tests/schema.surql).
+# An invoice something has been paid against can't go: remove those payments' allocations
+# first, so no payment silently turns into money on account.
+#
+# args: doc (document id)
+kind: script
+atomic: true
+body: |
+  let doc = args.doc ?? "";
+  if doc == "" { throw "doc is required"; }
+  let d = table("doc").get(doc);
+  if d == () { throw "That document no longer exists"; }
+  if d.type == "sale" || d.type == "purchase" {
+    let paid = table("allocation").where("invoice", doc).count();
+    if paid > 0 {
+      throw `This invoice has ${paid} payment${if paid == 1 { "" } else { "s" }} or credit${if paid == 1 { "" } else { "s" }} against it: change ${if paid == 1 { "that" } else { "those" }} first`;
+    }
+  }
+  table("doc").delete(doc);
+  #{ doc: doc }

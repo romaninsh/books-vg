@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=./action-schema-1.json
+# Add or rename a bank account, or point it at another primary nominal code (15000 Bank
+# accounts, 25000 Credit card, 27000 Term Loan…). The code must be a primary nominal's.
+#
+# args: id?, name, code
+# Returns #{ bank_account }.
+kind: script
+atomic: true
+body: |
+  let a = args;
+  let name = a.name ?? "";
+  name.trim();
+  let code = a.code ?? "";
+  let errors = #{};
+  if name == "" { errors["name"] = "Name is required"; }
+  if code == "" { errors["code"] = "Pick the nominal it posts to"; }
+  else if table("nominal").where("code", code).list().filter(|n| n.parent == ()).is_empty() {
+    errors["code"] = `No primary nominal has code ${code}`;
+  }
+  if !errors.is_empty() { throw "FIELDS:" + errors.to_json(); }
+  let id = a.id ?? "";
+  if id == "" { id = table("bank_account").insert(#{ name: name, code: code }); }
+  else { table("bank_account").patch(id, #{ name: name, code: code }); }
+  #{ bank_account: if id.contains(":") { id } else { "bank_account:" + id } }

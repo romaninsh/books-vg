@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=./table-schema-1.json
+# Misc payment / misc lodgement: the extension of a `doc`. No customer or supplier;
+# the nominal is picked by hand. Posts bank ↔ nominal (see nominal_sheet).
+datasource: surrealdb
+title: Misc payments
+columns:
+  id: { type: string, flags: [id, hidden] }
+  doc: { type: string, label: Document, references: doc }   # not hidden: the web app reads it
+  doc.date: { type: date, label: Date }
+  doc.type: { type: string, label: Type }
+  doc.reference: { type: string, label: Reference }
+  doc.contact_name: { type: string, label: Paid to / from }
+  doc.description: { type: string, label: Description }
+  doc.total: { type: float, label: Amount, unit: { currency: "£" } }
+  bank_account: { type: string, label: Bank account, flags: [mandatory], references: bank_account }
+  bank_account.name: { type: string, label: Bank account }
+  nominal: { type: string, label: Nominal, flags: [mandatory], references: nominal }
+  nominal.code: { type: string, label: Code }
+  nominal.path: { type: string, label: Nominal }

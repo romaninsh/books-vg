@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=./datasource-schema-1.json
+# The profile picks the server: local = composer.yaml's SurrealDB, prod = SurrealDB Cloud (.env / .env.prod).
+type: surreal-db
+description: The books
+url: ${secret.surreal_url}
+namespace: ${profile.surreal_ns}
+database: ${profile.surreal_db}

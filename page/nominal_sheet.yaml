@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=./page-schema-1.json
+title: Nominal sheet
+body:
+  - kind: grid
+    name: sheet
+    observe: nominal_sheet
+    params:
+      search: true
+      default_sort: { column: date, direction: desc }
+      columns:
+        date: { label: Date }
+        doc_type:
+          label: Type
+          labels: { misc_payment: Misc payment, misc_lodgement: Misc lodgement }
+        reference: { label: Reference }
+        contact: { label: Contact }
+        nominal_code: { label: Code }
+        nominal_path: { label: Nominal }
+        nominal_type: { label: Nominal type }
+        bp: { label: "B/P" }
+        bank: { label: Bank account }
+        amount: { label: Amount }

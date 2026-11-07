@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=./action-schema-1.json
+# New sales or purchase invoice header. The caller passes `type` (sale / purchase); the
+# toolbar body writes the `doc` and its `invoice` extension together.
+kind: form
+dialog:
+  title: New invoice
+  description: "Add the lines afterwards with Add line on the new invoice."
+  confirm_label: Create
+form:
+  fields:
+    - { name: type, type: string, label: Type, readonly: true }
+    - { name: date, type: date, label: Date }
+    - name: contact
+      label: Customer / supplier
+      type: string
+      widget: dropdown
+      option_label: name
+      options: |
+        if form["type"] == "purchase" { table("supplier") } else { table("customer") }
+    - { name: number, type: string, label: Invoice No, required: false }
+    - { name: due_date, type: date, label: Due date, required: false }
+    - { name: reference, type: string, label: Reference, required: false }

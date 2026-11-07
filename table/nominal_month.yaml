@@ -1,0 +1,40 @@
+# yaml-language-server: $schema=./table-schema-1.json
+# Each nominal's movement per calendar month, summed from the nominal sheet. The profit and
+# loss report adds months up into financial years (company.fy_start_month); the balance
+# sheet adds everything up to a year end. Debit +, credit −, like the sheet.
+datasource: surrealdb
+title: Nominal by month
+columns:
+  id: { type: string, flags: [id, hidden] }
+  nominal: { type: string, flags: [hidden] }
+  code: { type: string, label: Code }
+  nominal_path: { type: string, label: Nominal, flags: [title, searchable] }
+  nominal_type: { type: string, label: Type }
+  bp: { type: string, label: "B/P" }
+  year: { type: int, label: Year }
+  month: { type: int, label: Month }
+  total: { type: float, label: Movement, unit: { currency: "£" } }
+surreal:
+  base: nominal_sheet
+  rhai: |
+    // grouped straight on the sheet (one level less: a count() around it would otherwise
+    // pass SurrealDB's nesting limit)
+    surreal::select()
+        .from(surreal::select()
+            .from(base.subquery())
+            .field("nominal")
+            .expression(surreal::expr("time::year(date)").alias("year"))
+            .expression(surreal::expr("time::month(date)").alias("month"))
+            .expression(surreal::expr("math::sum(amount)").alias("total"))
+            .group_by(surreal::ident("nominal"))
+            .group_by(surreal::ident("year"))
+            .group_by(surreal::ident("month"))
+            .subquery())
+        .expression(surreal::expr("type::record('nominal_month', record::id(nominal) + '_' + <string>year + '_' + <string>month)").alias("id"))
+        .field("nominal").field("year").field("month")
+        .expression(surreal::expr("math::fixed(total, 2)").alias("total"))
+        .expression(surreal::expr("nominal.code").alias("code"))
+        .expression(surreal::expr("nominal.path").alias("nominal_path"))
+        .expression(surreal::expr("nominal.type").alias("nominal_type"))
+        .expression(surreal::expr("nominal.bp").alias("bp"))
+        .order_by(surreal::ident("code"), "asc")

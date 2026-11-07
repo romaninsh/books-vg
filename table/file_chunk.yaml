@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=./table-schema-1.json
+# Pieces of a file being uploaded (action/stage-file.yaml), joined by save-invoice.
+datasource: surrealdb
+title: File pieces
+columns:
+  id: { type: string, flags: [id, hidden] }
+  upload: { type: string, label: Upload }
+  seq: { type: int, label: Piece }
+  data: { type: string, label: Content }
+  added_at: { type: timestamp, label: Added }
+# transient; the attachment it becomes is logged
+log_changes: false

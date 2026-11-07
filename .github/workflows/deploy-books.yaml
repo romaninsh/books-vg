@@ -1,0 +1,88 @@
+# The books web app (api/books.yaml with web/books on vantage-server, ./Dockerfile) to Cloud Run as
+# books-vg, on every merge to main that changes it. Auth: Workload Identity Federation as
+# github-books-vg (vantage-terraform's module "books_vg_gcp", from ./terraform); the database URL
+# comes from Secret Manager, never the image or this repository.
+name: deploy-books
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'application.yaml'
+      - 'api/**'
+      - 'table/**'
+      - 'datasource/**'
+      - 'action/**'
+      - 'web/**'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - '.github/workflows/deploy-books.yaml'
+  workflow_dispatch:
+
+permissions: {}
+
+# A second merge waits for the running deploy; neither is cancelled.
+concurrency:
+  group: deploy-books
+  cancel-in-progress: false
+
+env:
+  PROJECT: inlaid-agility-461020-e4
+  REGION: europe-west2
+  SERVICE: books-vg
+  IMAGE: europe-west2-docker.pkg.dev/inlaid-agility-461020-e4/books-vg/books
+  # Cloud Run's deterministic URL (<name>-<project number>.<region>.run.app)
+  URL: https://books-vg-129027965449.europe-west2.run.app
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: projects/129027965449/locations/global/workloadIdentityPools/golf/providers/books-vg-main
+          service_account: github-books-vg@inlaid-agility-461020-e4.iam.gserviceaccount.com
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Build and push the image
+        run: |
+          gcloud auth configure-docker europe-west2-docker.pkg.dev --quiet
+          docker build --platform linux/amd64 --build-arg API=books -t "$IMAGE:$GITHUB_SHA" -t "$IMAGE:latest" .
+          docker push "$IMAGE:$GITHUB_SHA"
+          docker push "$IMAGE:latest"
+
+      # Scales to zero, one instance at most (the server keeps each client's live view in memory),
+      # CPU billed only while a request or an open WebSocket runs; the hour-long timeout keeps a
+      # page's socket open. All traffic leaves through the project's fixed address (Cloud NAT,
+      # vantage-terraform gcp-egress.tf), which is what a database allow-list names. The startup
+      # probe keeps traffic off a revision until /v1/ready says the database connected.
+      - name: Deploy
+        run: |
+          gcloud run deploy "$SERVICE" --project "$PROJECT" --region "$REGION" \
+            --image "$IMAGE:$GITHUB_SHA" \
+            --service-account "books-vg-runtime@$PROJECT.iam.gserviceaccount.com" \
+            --min-instances 0 --max-instances 1 --concurrency 1000 --cpu 1 --memory 512Mi --cpu-boost --timeout 3600 \
+            --network default --subnet default --vpc-egress all-traffic \
+            --set-env-vars "VANTAGE_PROFILE=prod,SURREAL_NS=books,SURREAL_DB=books" \
+            --set-secrets "SECRET_SURREAL_URL=books-vg-surreal-url:latest" \
+            --startup-probe httpGet.path=/v1/ready,httpGet.port=8080,periodSeconds=2,timeoutSeconds=1,failureThreshold=60
+
+      # The page, the database (/v1/ready), and tables opened over the WebSocket: a broken
+      # deploy fails here, not at a visitor's first click.
+      - name: Smoke check
+        run: |
+          curl -fsS -m 60 "$URL/" | grep -q 'id="root"'
+          ready="$(curl -sS -m 60 "$URL/v1/ready")"
+          echo "$URL/v1/ready: $ready"
+          echo "$ready" | grep -q '"ready":true'
+          node tests/ws_probe.mjs "$URL"

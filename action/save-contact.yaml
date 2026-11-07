@@ -1,0 +1,40 @@
+# yaml-language-server: $schema=./action-schema-1.json
+# Save a customer or supplier from the web app: new (no id) or changed (id). Blank text
+# fields are cleared.
+#
+# args: type "client" | "supplier", id?, name, contact_name, email, telephone, address, city,
+#       county, country, currency, vat_registered, vat_no, credit_terms, note
+# Returns #{ contact }. Field problems throw "FIELDS:" + JSON before anything is written.
+kind: script
+atomic: true
+body: |
+  let a = args;
+  let kind = a.type ?? "";
+  if kind != "client" && kind != "supplier" { throw "type must be client or supplier"; }
+  let errors = #{};
+  let name = a.name ?? "";
+  name.trim();   // trims in place (returns nothing)
+  if name == "" { errors["name"] = "Name is required"; }
+  let email = a.email ?? "";
+  if email != "" && !email.contains("@") { errors["email"] = "Not an email address"; }
+  if a.credit_terms != () && a.credit_terms < 0 { errors["credit_terms"] = "Can't be negative"; }
+  let cur = a.currency ?? "GBP";
+  if !["GBP", "EUR", "USD"].contains(cur) { errors["currency"] = "GBP, EUR or USD"; }
+  if !errors.is_empty() { throw "FIELDS:" + errors.to_json(); }
+
+  let m = #{ name: name, currency: cur, vat_registered: a.vat_registered ?? false,
+             credit_terms: a.credit_terms ?? 30 };
+  // A new contact leaves blank fields out; a changed one stores "" to clear one (a null is
+  // refused by the option<string> fields, see FEEDBACK.md).
+  let id = a.id ?? "";
+  for k in ["contact_name", "email", "telephone", "address", "city", "county", "country", "vat_no", "note"] {
+    let v = a[k] ?? "";
+    if v != "" || id != "" { m[k] = v; }
+  }
+  if id == "" {
+    m.type = kind;
+    id = table("contact").insert(m);
+  } else {
+    table("contact").patch(id, m);
+  }
+  #{ contact: if id.contains(":") { id } else { "contact:" + id } }
