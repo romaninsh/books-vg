@@ -80,6 +80,8 @@ createRoot(document.getElementById("root")!).render(
                 <Route path="/reports/aged-creditors" element={<AgedDebt key="c" side="creditors" />} />
                 <Route path="/setup" element={<Navigate to="/setup/company" replace />} />
                 <Route path="/setup/company" element={<CompanySettings />} />
+                {/* the About splash (shell/Splash.tsx) shows over the default page at /about */}
+                <Route path="/about" element={<InvoiceList key="sales" kind="sales" />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>
