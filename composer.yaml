@@ -8,8 +8,8 @@
 # picked, and nothing is reachable from the local network.
 services:
   surrealdb:
-    # pinned to the version checks.yaml tests against; move them together
-    image: surrealdb/surrealdb:v4.0.0
+    # the 3.x line, as production (SurrealDB Cloud 3.x); checks.yaml tests the same tag, move them together
+    image: surrealdb/surrealdb:v3
     command: start --user root --pass root --bind 0.0.0.0:8000 rocksdb:/home/nonroot/db.db
     ports:
       - "127.0.0.1::8000"
