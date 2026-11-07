@@ -117,6 +117,7 @@ entities:
   # arguments (`args`) stay out: they repeat the whole saved form.
   - name: activity
     observe: audit_event
+    read_only: true
     params:
       columns: [logged_at, who, action, table, record, event, group, before, after, doc, contact]
       filter: [doc, contact, table, group, logged_at, who]
