@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowDown, ArrowRight, ArrowUpRight, Check, X } from "lucide-react";
 import { ABOUT } from "@/about";
+import { track, trackOutbound } from "@/analytics";
 import { COMPARISON } from "./comparison";
 
 // `code` in a comparison line renders as code
@@ -58,13 +59,16 @@ const STATS: [string, string, string][] = [
   [fmt(b.issuesReported), "issues reported to Vantage", "each with its workaround"],
 ];
 
+let autoTracked = false; // StrictMode runs the mount effect twice in development
+
 export function Splash() {
   const [open, setOpen] = useState(() => atAbout() || sessionStorage.getItem(SEEN) !== "1");
   const button = useRef<HTMLButtonElement>(null);
   const close = () => { sessionStorage.setItem(SEEN, "1"); setOpen(false); leaveAbout(); };
 
   useEffect(() => {
-    const again = () => setOpen(true);
+    if (open && !autoTracked) { autoTracked = true; track("about_open", { trigger: "auto" }); }
+    const again = () => { setOpen(true); track("about_open", { trigger: "link" }); };
     // Back and Forward: arriving at /about opens it, leaving closes it
     const moved = () => setOpen(atAbout());
     window.addEventListener("books:about", again);
@@ -144,7 +148,7 @@ export function Splash() {
                     Explore Demo <ArrowRight size={16} />
                   </button>
                   {/* the site's outline button: to the Vantage UI download page */}
-                  <a href="https://vantage-ui.com/download/" target="_blank" rel="noreferrer"
+                  <a href="https://vantage-ui.com/download/" target="_blank" rel="noreferrer" onClick={trackOutbound}
                     className="inline-flex items-center gap-2 rounded-lg border px-5 py-2.5 text-[0.95rem] font-medium transition-all duration-150 hover:bg-[#6366f11a]"
                     style={{ borderColor: "rgba(255,255,255,0.16)", color: V.text1 }}
                     onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${V.accent400}99`; }}

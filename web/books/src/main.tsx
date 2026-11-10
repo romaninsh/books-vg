@@ -13,7 +13,10 @@ import { PaymentList } from "./lists/PaymentList";
 import { CompanySettings } from "./setup/CompanySettings"; // small, and the shell reads the company anyway
 import { loadDrafts } from "./editor/store";
 import { resumeSaves } from "./editor/save";
+import { initAnalytics } from "./analytics";
 import "./styles.css";
+
+initAnalytics();
 
 // Day-to-day pages load with the app; reports, accounts and setup load when first opened.
 const named = <K extends string>(load: () => Promise<Record<K, any>>, name: K): ComponentType<any> =>

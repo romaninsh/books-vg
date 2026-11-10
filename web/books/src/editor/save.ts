@@ -1,6 +1,7 @@
 import { allDrafts, finishSaved, getDraft, isBusy, isContact, isPay, markOwn, markSaved, newKey, removeDraft, setSide, updateDraft, type Draft, type NewFile } from "./store";
 import { draftTotals, lineVat } from "./totals";
 import { humanError } from "@/shell/toast";
+import { track } from "@/analytics";
 
 // The save queue. Saving starts the save-invoice action as a run with the draft's own run
 // id and returns at once: the user carries on. The id is stored with the draft, so after a
@@ -79,10 +80,16 @@ function parseError(message: string): { error: string; fieldErrors?: Record<stri
   return { error: humanError(message) };
 }
 
+// The saves that show someone really used the demo (docs/web-app.md, Analytics).
+const demoAction = (kind: string) =>
+  kind === "sale" ? "save_invoice" : kind === "purchase" ? "save_bill" : isPay(kind) ? "record_payment" : undefined;
+
 function follow(key: string, run: { done: Promise<any> }) {
   void run.done.then((res: any) => {
     if (!getDraft(key)) return;
     if (res.ok) {
+      const action = demoAction(getDraft(key)!.kind);
+      if (action) track("demo_action", { action });
       // what was saved: a document, or a contact (its row id, for the mint flash)
       const doc = (res.value?.doc ?? res.value?.contact) as string | undefined;
       const flipOf = getDraft(key)?.flipOf;

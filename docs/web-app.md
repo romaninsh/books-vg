@@ -49,6 +49,33 @@ everything), ? shortcuts, toasts for outcomes, a banner while the connection is 
   `nominal_sheet` (ledger), `nominal_month` (P&L and balance sheet by financial year),
   `aged_debt`. Nothing is stored.
 
+## Analytics
+
+`src/analytics.ts` sends to the vantage-ui.com GA4 property (`G-R3BJYDRX24`, content group
+`demo-books`), so a visit from the site to the demo stays one session. The tag loads only
+when the page is served from `books.demo.vantage-ui.com`. Anywhere else (localhost, the
+`*.run.app` preview, e2e runs) nothing is sent, and each event is logged to the console as
+`[ga] name params` instead.
+
+Page views are not sent by hand. The router uses the History API (`BrowserRouter`), and
+GA's enhanced measurement counts its navigations.
+
+| Event | Params | Fires |
+|---|---|---|
+| `about_open` | `trigger`: `auto` / `link` | the splash shows on a session's first visit / is reopened from "About this demo" (`shell/Splash.tsx`) |
+| `outbound_click` | `link_url` | a link leaving the app, e.g. the splash's "Build your own" |
+| `demo_action` | `action`: `save_invoice`, `save_bill`, `record_payment` | a sales invoice, purchase invoice or payment saved successfully (`editor/save.ts`, `follow`) |
+
+To add one, call `track()` where the thing succeeds, and add a row here:
+
+```ts
+import { track } from "@/analytics";
+track("demo_action", { action: "run_report" });
+```
+
+For a new external link, add `onClick={trackOutbound}` to the `<a>`. Check the event in the
+browser console on localhost before shipping.
+
 ## Checking it
 
 - `web_run npm run build`: type-checks the app and the e2e tests, then builds.
