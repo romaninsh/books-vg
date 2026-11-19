@@ -57,7 +57,6 @@ and deleting a document takes its lines, allocations and attachments with it.
 | `scripts/` | How the sample was cut, and how the splash screen's numbers were measured |
 | `docs/` | Data model, decisions, notes on the web app |
 | `FEEDBACK.md` | Limits we hit in Vantage and SurrealDB |
-| `terraform/` | Deploy identity, secret and Cloud Run service (applied from `vantage-terraform`) |
 
 ## Running it locally
 
